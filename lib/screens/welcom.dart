@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:uni_links/uni_links.dart';
 import 'home.dart';
 
 class WelcomeScreen extends StatelessWidget {
@@ -136,41 +135,3 @@ class WelcomeScreen extends StatelessWidget {
   }
 }
 
-
-class AppInit extends StatefulWidget {
-  const AppInit({super.key});
-
-  @override
-  State<AppInit> createState() => _AppInitState();
-}
-
-class _AppInitState extends State<AppInit> {
-  StreamSubscription? _sub;
-
-  @override
-  void initState() {
-    super.initState();
-    _sub = uriLinkStream.listen((Uri? uri) {
-      if (uri == null) return;
-      if (uri.scheme == 'myapp' && uri.host == 'oauth' && uri.path == '/kakao') {
-        final token = uri.queryParameters['token'];
-        if (token != null) {
-          // 1) 토큰 local 저장 (secure storage 추천)
-          // 2) 홈 화면으로 이동
-        }
-      }
-    });
-  }
-
-  @override
-  void dispose() {
-    _sub?.cancel();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    // 앱 루트 위젯
-    return const WelcomeScreen();
-  }
-}

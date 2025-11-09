@@ -12,9 +12,8 @@ dependencies:
     sdk: flutter
   flutter_svg: ^2.0.10
   url_launcher: ^6.3.0
-  uni_links: ^0.5.1
-
   cupertino_icons: ^1.0.8
+  flutter_launcher_icons: ^0.13.1
 
 dev_dependencies:
   flutter_test:
@@ -27,3 +26,8 @@ flutter:
 
   assets:
     - lib/assets/icons/welcome_sc/
+
+flutter_icons:
+  android: true
+  ios: true
+  image_path: "lib/assets/icons/app_icon/app_icon.jpeg"
