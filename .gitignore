@@ -1,0 +1,50 @@
+# ---- 공통 ----
+.DS_Store
+.idea/
+.vscode/
+*.iml
+
+# Dart / Flutter
+.dart_tool/
+.packages
+.pub-cache/
+.pub/
+build/
+coverage/
+
+# Generated (자동 생성 파일)
+**/GeneratedPluginRegistrant.*
+**/flutter_export_environment.sh
+
+# ---- Android ----
+android/.gradle/
+android/local.properties
+android/**/build/
+
+# (Firebase 쓰면 주석 풀고, 레포에 안 올리는 걸 추천)
+# android/app/google-services.json
+
+# ---- iOS ----
+ios/Pods/
+ios/.symlinks/
+ios/Flutter/Flutter.framework
+ios/Flutter/Flutter.podspec
+ios/Flutter/Generated.xcconfig
+ios/Flutter/ephemeral/
+ios/Runner.xcworkspace/
+ios/**/build/
+
+# ---- macOS ----
+macos/Flutter/ephemeral/
+macos/Flutter/GeneratedPluginRegistrant.swift
+macos/**/build/
+
+# ---- Xcode 잡것들 ----
+**/DerivedData/
+**/*.xcuserstate
+**/*.xcuserdatad
+**/xcuserdata/
+
+# ---- Web (필요하면) ----
+# 기본적으로 web/ 폴더는 소스라서 커밋하는 게 맞고,
+# build/web 만 자동 생성이라 위 build/ 규칙으로 이미 무시됨.
