@@ -4,6 +4,7 @@
 .vscode/
 *.iml
 .env
+*.env
 # Dart / Flutter
 .dart_tool/
 .packages
