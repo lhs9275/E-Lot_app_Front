@@ -3,7 +3,7 @@
 .idea/
 .vscode/
 *.iml
-
+.env
 # Dart / Flutter
 .dart_tool/
 .packages
