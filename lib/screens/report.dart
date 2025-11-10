@@ -13,7 +13,7 @@ class MyApp extends StatelessWidget {
         useMaterial3: true,
         colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF3B82F6)),
       ),
-      // ▶ 앱 실행 즉시 풀스크린 신고 화면
+      // 앱 실행 즉시 풀스크린 신고 화면
       home: const ReportPage(),
     );
   }
@@ -62,6 +62,7 @@ class _ReportPageState extends State<ReportPage> {
     }
 
     setState(() => _submitting = true);
+
     // 실제 전송 위치 (예: API 호출)
     final payload = {
       'targetType': _currentTab == 0 ? 'post' : 'author',
@@ -72,17 +73,22 @@ class _ReportPageState extends State<ReportPage> {
     };
     debugPrint('신고 전송: $payload');
 
-    // 데모: 약간의 지연 후 완료 처리
+    // 데모용 지연
     await Future<void>.delayed(const Duration(milliseconds: 300));
 
     if (!mounted) return;
+
+    // 🔽 입력창 비우기 + 키보드 내리기
+    FocusScope.of(context).unfocus();
+    _textController.clear();
+
     setState(() => _submitting = false);
 
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('신고가 접수되었습니다.')),
     );
 
-    // 루트가 아니면 뒤로 가기 (루트면 그대로 유지)
+    // 루트가 아니면 뒤로 가기 (루트면 유지)
     if (Navigator.of(context).canPop()) {
       Navigator.of(context).pop();
     }
@@ -98,7 +104,6 @@ class _ReportPageState extends State<ReportPage> {
         actions: [
           IconButton(
             tooltip: '닫기',
-            // ▶ 스와이프/뒤로가기와 동일: 안전하게 빠져나감
             onPressed: () {
               if (Navigator.of(context).canPop()) {
                 Navigator.of(context).maybePop();
