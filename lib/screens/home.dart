@@ -1,15 +1,32 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_svg/flutter_svg.dart'; // 지금은 안 써도 되지만 놔둬도 됨
+import 'info_screen.dart';
 
 class HomeScreen extends StatelessWidget {
-  const HomeScreen({super.key}); // ← const 추가
+  const HomeScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('E-lot 홈')),
-      body: const Center(
-        child: Text('여기가 메인 화면!'),
+      body: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('여기가 메인 화면!'),
+            const SizedBox(height: 16),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const InfoScreen(),
+                  ),
+                );
+              },
+              child: const Text('인포 보러 가기'),
+            ),
+          ],
+        ),
       ),
     );
   }
