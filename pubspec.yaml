@@ -14,10 +14,7 @@ dependencies:
   url_launcher: ^6.3.0
   cupertino_icons: ^1.0.8
   flutter_launcher_icons: ^0.13.1
-  kakao_flutter_sdk: ^1.9.5
-  flutter_secure_storage: ^9.0.0
-  http: ^1.2.0
-  flutter_dotenv: ^5.1.0
+  flutter_naver_map: ^1.4.1+1
 
 dev_dependencies:
   flutter_test:
@@ -29,30 +26,7 @@ flutter:
   uses-material-design: true
 
   assets:
-    - .env
     - lib/assets/icons/welcome_sc/
-
-  fonts:
-    - family: NotoSansKR
-      fonts:
-        - asset: lib/assets/fonts/NotoSansKR-Thin.ttf
-          weight: 100
-        - asset: lib/assets/fonts/NotoSansKR-ExtraLight.ttf
-          weight: 200
-        - asset: lib/assets/fonts/NotoSansKR-Light.ttf
-          weight: 300
-        - asset: lib/assets/fonts/NotoSansKR-Regular.ttf
-          weight: 400
-        - asset: lib/assets/fonts/NotoSansKR-Medium.ttf
-          weight: 500
-        - asset: lib/assets/fonts/NotoSansKR-SemiBold.ttf
-          weight: 600
-        - asset: lib/assets/fonts/NotoSansKR-Bold.ttf
-          weight: 700
-        - asset: lib/assets/fonts/NotoSansKR-ExtraBold.ttf
-          weight: 800
-        - asset: lib/assets/fonts/NotoSansKR-Black.ttf
-          weight: 900
 
 flutter_icons:
   android: true
