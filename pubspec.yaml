@@ -27,6 +27,7 @@ flutter:
 
   assets:
     - lib/assets/icons/welcome_sc/
+    - lib/assets/icons/mascot_character/
 
 flutter_icons:
   android: true

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_naver_map/flutter_naver_map.dart';
 
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
@@ -55,7 +56,12 @@ class _MapScreenState extends State<MapScreen> {
       // 가운데 동그란 버튼(예: 챗봇/메뉴 등)
       floatingActionButton: FloatingActionButton(
         onPressed: _onCenterButtonPressed,
-        child: const Icon(Icons.android), // 스샷의 로봇 느낌
+        child: Image.asset(
+          'lib/assets/icons/mascot_character/sparky.png',
+          width: 96,
+          height: 96,
+          fit: BoxFit.contain,
+        ),
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
 
