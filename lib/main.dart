@@ -2,8 +2,9 @@ import 'dart:io' show HttpOverrides, HttpClient, SecurityContext;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:kakao_flutter_sdk_user/kakao_flutter_sdk_user.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:flutter_naver_map/flutter_naver_map.dart';
+import 'package:kakao_flutter_sdk_user/kakao_flutter_sdk_user.dart';
 import 'screens/welcom.dart';
 import 'services/h2_station_api_service.dart';
 
@@ -19,14 +20,17 @@ Future<void> main() async {
   // 3. H2 API 서비스 구성 (환경 변수 없으면 기본값)
   configureH2StationApi(baseUrl: _resolveH2BaseUrl());
 
-  // 4. 로드된 값으로 KakaoSdk 초기화
+  // 4. 네이버 지도 SDK 초기화
+  await _initializeNaverMap();
+
+  // 5. 로드된 값으로 KakaoSdk 초기화
   KakaoSdk.init(
     nativeAppKey: dotenv.env['KAKAO_NATIVE_APP_KEY'] ?? '',
     javaScriptAppKey: dotenv.env['KAKAO_JAVASCRIPT_APP_KEY'] ?? '',
     // 또는 dotenv.get('KAKAO_NATIVE_APP_KEY') 써도 됨 (없으면 에러 던짐)
   );
 
-  // 5. 앱 실행
+  // 6. 앱 실행
   runApp(const MyApp());
 }
 
@@ -55,6 +59,24 @@ bool _shouldAllowInsecureSsl() {
   if (value == null) return false;
   final normalized = value.trim().toLowerCase();
   return {'true', '1', 'yes', 'y'}.contains(normalized);
+}
+
+Future<void> _initializeNaverMap() async {
+  final rawClientId = dotenv.env['NAVER_MAP_CLIENT_ID']?.trim();
+  final clientId =
+      (rawClientId == null || rawClientId.isEmpty) ? 'hoivm494r9' : rawClientId;
+
+  try {
+    await FlutterNaverMap().init(
+      clientId: clientId,
+      onAuthFailed: (ex) =>
+          debugPrint('[NaverMap] 인증 실패 (code: ${ex.code}): ${ex.message}'),
+    );
+  } catch (error) {
+    debugPrint(
+      '[NaverMap] 초기화 실패: $error — .env에 NAVER_MAP_CLIENT_ID를 설정했는지 확인하세요.',
+    );
+  }
 }
 
 class _InsecureHttpOverrides extends HttpOverrides {

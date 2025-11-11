@@ -30,12 +30,6 @@ class AuthHttpClient {
       ) async {
     String? accessToken = await TokenStorage.getAccessToken();
 
-    Future<http.Response> doRequest() {
-      // Authorization 헤더를 붙여서 다시 requestFn을 구성하는 식으로 바꾸는 게 더 견고하지만
-      // 여기선 간단하게 header만 추가하는 버전 예시로 둘게.
-      return requestFn();
-    }
-
     // 1차 시도
     var response = await _requestWithAuthHeader(requestFn, accessToken);
 

@@ -1,4 +1,4 @@
-package com.example.psp2_fn
+package kr.clos21.psp2fn
 
 import io.flutter.embedding.android.FlutterActivity
 

@@ -4,8 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:http/http.dart' as http;
 import 'package:kakao_flutter_sdk_user/kakao_flutter_sdk_user.dart';
+import 'package:psp2_fn/auth/token_storage.dart';
+import 'package:psp2_fn/screens/map.dart';
 
-import 'home.dart';
 
 class WelcomeScreen extends StatelessWidget {
   const WelcomeScreen({super.key});
@@ -33,15 +34,28 @@ class WelcomeScreen extends StatelessWidget {
         final accessToken = data['access_token'] as String?;
         final refreshToken = data['refresh_token'] as String?;
 
-        // TODO: secure storage 등에 저장해서 이후 Authorization 헤더에 사용
-        // 예: await TokenStorage.saveTokens(accessToken: accessToken!, refreshToken: refreshToken!);
+        if (accessToken == null || refreshToken == null) {
+          if (!context.mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('서버 응답에 토큰 정보가 없습니다.')),
+          );
+          return;
+        }
+
+        await TokenStorage.saveTokens(
+          accessToken: accessToken,
+          refreshToken: refreshToken,
+        );
+
+        if (!context.mounted) return;
 
         // 로그인 성공 → 홈 화면으로 이동
         Navigator.pushReplacement(
           context,
-          MaterialPageRoute(builder: (_) => const HomeScreen()),
+          MaterialPageRoute(builder: (_) => const MapScreen()),
         );
       } else {
+        if (!context.mounted) return;
         // 서버 에러 메시지 출력
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -52,9 +66,11 @@ class WelcomeScreen extends StatelessWidget {
         );
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('카카오 로그인 중 오류: $e')),
-      );
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('카카오 로그인 중 오류: $e')),
+        );
+      }
     }
   }
 
