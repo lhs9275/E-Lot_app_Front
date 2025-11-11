@@ -1,20 +1,63 @@
 PODS:
   - Flutter (1.0.0)
+  - flutter_naver_map (1.4.0):
+    - Flutter
+    - NMapsMap (= 3.22.1)
+  - flutter_secure_storage (6.0.0):
+    - Flutter
+  - kakao_flutter_sdk_common (1.9.7-3):
+    - Flutter
+  - NMapsGeometry (1.0.2)
+  - NMapsMap (3.22.1):
+    - NMapsGeometry
+  - path_provider_foundation (0.0.1):
+    - Flutter
+    - FlutterMacOS
+  - shared_preferences_foundation (0.0.1):
+    - Flutter
+    - FlutterMacOS
   - url_launcher_ios (0.0.1):
     - Flutter
 
 DEPENDENCIES:
   - Flutter (from `Flutter`)
+  - flutter_naver_map (from `.symlinks/plugins/flutter_naver_map/ios`)
+  - flutter_secure_storage (from `.symlinks/plugins/flutter_secure_storage/ios`)
+  - kakao_flutter_sdk_common (from `.symlinks/plugins/kakao_flutter_sdk_common/ios`)
+  - path_provider_foundation (from `.symlinks/plugins/path_provider_foundation/darwin`)
+  - shared_preferences_foundation (from `.symlinks/plugins/shared_preferences_foundation/darwin`)
   - url_launcher_ios (from `.symlinks/plugins/url_launcher_ios/ios`)
+
+SPEC REPOS:
+  trunk:
+    - NMapsGeometry
+    - NMapsMap
 
 EXTERNAL SOURCES:
   Flutter:
     :path: Flutter
+  flutter_naver_map:
+    :path: ".symlinks/plugins/flutter_naver_map/ios"
+  flutter_secure_storage:
+    :path: ".symlinks/plugins/flutter_secure_storage/ios"
+  kakao_flutter_sdk_common:
+    :path: ".symlinks/plugins/kakao_flutter_sdk_common/ios"
+  path_provider_foundation:
+    :path: ".symlinks/plugins/path_provider_foundation/darwin"
+  shared_preferences_foundation:
+    :path: ".symlinks/plugins/shared_preferences_foundation/darwin"
   url_launcher_ios:
     :path: ".symlinks/plugins/url_launcher_ios/ios"
 
 SPEC CHECKSUMS:
   Flutter: cabc95a1d2626b1b06e7179b784ebcf0c0cde467
+  flutter_naver_map: 651a0c5af560ee180f6ee57c11e4ec62aa82abc8
+  flutter_secure_storage: 1ed9476fba7e7a782b22888f956cce43e2c62f13
+  kakao_flutter_sdk_common: 600d55b532da0bd37268a529e1add49302477710
+  NMapsGeometry: 4e02554fa9880ef02ed96b075dc84355d6352479
+  NMapsMap: 09552eb050059e13b4c8fc294055760713cfdad8
+  path_provider_foundation: bb55f6dbba17d0dccd6737fe6f7f34fbd0376880
+  shared_preferences_foundation: 7036424c3d8ec98dfe75ff1667cb0cd531ec82bb
   url_launcher_ios: 7a95fa5b60cc718a708b8f2966718e93db0cef1b
 
 PODFILE CHECKSUM: 3c63482e143d1b91d2d2560aee9fb04ecc74ac7e

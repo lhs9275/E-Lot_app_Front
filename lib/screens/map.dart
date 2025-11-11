@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_naver_map/flutter_naver_map.dart';
-
+import 'bookmark.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -31,6 +31,21 @@ class _MapScreenState extends State<MapScreen> {
   NCameraPosition(target: _initialTarget, zoom: 14);
 
   int _selectedIndex = 0; // 하단 탭 선택 인덱스
+
+  // FAB이 안 움직이도록 'floating' 스낵바 사용
+  void _showStatus(String message) {
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        behavior: SnackBarBehavior.floating,
+        // 살짝 아래 (기기에 따라 더 조절 가능)
+        margin: const EdgeInsets.fromLTRB(16, 0, 16, 20),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        duration: const Duration(seconds: 2),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -65,10 +80,10 @@ class _MapScreenState extends State<MapScreen> {
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
 
-      // 하단 버튼바 (FAB이 들어갈 홈이 파이는 모양)
+      // 하단 버튼바 (FAB 홈 파인 모양)
       bottomNavigationBar: BottomAppBar(
         shape: const CircularNotchedRectangle(),
-        notchMargin: 8,
+        notchMargin: 10,
         height: 64,
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceAround,
@@ -89,9 +104,10 @@ class _MapScreenState extends State<MapScreen> {
             // FAB 자리 비우기
             const SizedBox(width: 48),
 
+            // ✅ 즐겨찾기(별 아이콘)
             _NavItem(
-              icon: Icons.list_alt,
-              label: '목록',
+              icon: _selectedIndex == 2 ? Icons.star : Icons.star_outline,
+              label: '즐겨찾기',
               selected: _selectedIndex == 2,
               onTap: () => _onTapItem(2),
             ),
@@ -110,7 +126,7 @@ class _MapScreenState extends State<MapScreen> {
   void _onTapItem(int idx) {
     setState(() => _selectedIndex = idx);
 
-    // 필요하면 탭별 동작 연결
+    // 탭별 동작
     switch (idx) {
       case 0: // 홈
         _controller?.updateCamera(
@@ -118,30 +134,28 @@ class _MapScreenState extends State<MapScreen> {
             NCameraPosition(target: _initialTarget, zoom: 14),
           ),
         );
+        _showStatus('홈으로 이동');
         break;
+
       case 1: // 근처
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('근처 보기 준비 중')),
+        _showStatus('근처 보기 준비 중');
+        break;
+
+      case 2: // ✅ 즐겨찾기: 화면 전환(Push)
+        Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => const FavoritesPage()),
         );
         break;
-      case 2: // 목록
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('목록 보기 준비 중')),
-        );
-        break;
+
       case 3: // 내 정보
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('내 정보 보기 준비 중')),
-        );
+        _showStatus('내 정보 보기 준비 중');
         break;
     }
   }
 
   void _onCenterButtonPressed() {
     // 가운데 버튼 동작 (예: 현재 위치로 이동 등)
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('가운데 버튼 눌림!')),
-    );
+    _showStatus('가운데 버튼 눌림!');
   }
 
   @override

@@ -156,17 +156,25 @@ class _ReportPageState extends State<ReportPage> {
                       ),
                     ),
 
-                    // 라디오 리스트
-                    ...ReportReason.values.map(
-                          (reason) => RadioListTile<ReportReason>(
-                        contentPadding: EdgeInsets.zero,
-                        value: reason,
-                        groupValue: _selected,
-                        onChanged: (v) => setState(() => _selected = v),
-                        title: Text(reason.label),
-                        dense: true,
-                        visualDensity:
-                        const VisualDensity(horizontal: -4, vertical: -2),
+                    // 라디오 리스트 (RadioGroup으로 호환성 유지)
+                    RadioGroup<ReportReason>(
+                      groupValue: _selected,
+                      onChanged: (reason) => setState(() => _selected = reason),
+                      child: Column(
+                        children: ReportReason.values
+                            .map(
+                              (reason) => RadioListTile<ReportReason>(
+                                contentPadding: EdgeInsets.zero,
+                                value: reason,
+                                title: Text(reason.label),
+                                dense: true,
+                                visualDensity: const VisualDensity(
+                                  horizontal: -4,
+                                  vertical: -2,
+                                ),
+                              ),
+                            )
+                            .toList(),
                       ),
                     ),
 

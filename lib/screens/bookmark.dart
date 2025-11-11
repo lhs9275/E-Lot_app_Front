@@ -1,20 +1,6 @@
 // lib/screens/favorites_page.dart
 import 'package:flutter/material.dart';
 
-void main() => runApp(const _FavoritesApp());
-
-class _FavoritesApp extends StatelessWidget {
-  const _FavoritesApp({super.key});
-  @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData(useMaterial3: true),
-      home: const FavoritesPage(),
-    );
-  }
-}
-
 /// 즐겨찾기 아이템 모델
 class FavoriteItem {
   final String id; // Dismissible 키용
@@ -52,6 +38,26 @@ class FavoritesPage extends StatefulWidget {
 
 class _FavoritesPageState extends State<FavoritesPage> {
   final List<FavoriteItem> _items = [];
+
+  /// ✅ 이 페이지 전용 스캐폴드 메신저 (루트와 분리)
+  final GlobalKey<ScaffoldMessengerState> _messengerKey =
+  GlobalKey<ScaffoldMessengerState>();
+
+  /// ✅ FAB이 안 움직이는 떠있는 스낵바
+  void _showStatus(String message, {SnackBarAction? action}) {
+    final bottomSafe = MediaQuery.of(context).viewPadding.bottom;
+    _messengerKey.currentState?.hideCurrentSnackBar();
+    _messengerKey.currentState?.showSnackBar(
+      SnackBar(
+        content: Text(message),
+        behavior: SnackBarBehavior.floating,
+        margin: EdgeInsets.fromLTRB(16, 0, 16, bottomSafe + 20),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        duration: const Duration(seconds: 2),
+        action: action,
+      ),
+    );
+  }
 
   // 추가 다이얼로그
   Future<void> _addFavoriteDialog() async {
@@ -150,80 +156,86 @@ class _FavoritesPageState extends State<FavoritesPage> {
           ),
         );
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('즐겨찾기에 추가되었습니다.')),
-      );
+      _showStatus('즐겨찾기에 추가되었습니다.');
     }
   }
 
   void _deleteAt(int index) {
     final removed = _items.removeAt(index);
     setState(() {});
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('"${removed.name}" 을(를) 삭제했습니다.'),
-        action: SnackBarAction(
-          label: '되돌리기',
-          onPressed: () {
-            setState(() {
-              _items.insert(index, removed);
-            });
-          },
-        ),
+    _showStatus(
+      '"${removed.name}" 을(를) 삭제했습니다.',
+      action: SnackBarAction(
+        label: '되돌리기',
+        onPressed: () {
+          setState(() {
+            _items.insert(index, removed);
+          });
+        },
       ),
     );
+  }
+
+  @override
+  void dispose() {
+    // 페이지를 떠날 때 이 페이지 스낵바들만 정리 (루트에는 영향 X)
+    _messengerKey.currentState?.clearSnackBars();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
 
-    return Scaffold(
-      appBar: AppBar(
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
-          onPressed: () => Navigator.maybePop(context),
-          tooltip: '뒤로',
+    return ScaffoldMessenger( // ✅ 루트와 분리된 Messenger
+      key: _messengerKey,
+      child: Scaffold(
+        appBar: AppBar(
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
+            onPressed: () => Navigator.maybePop(context),
+            tooltip: '뒤로',
+          ),
+          title: const Text('즐겨찾기'),
+          centerTitle: true,
         ),
-        title: const Text('즐겨찾기'),
-        centerTitle: true,
-      ),
-      body: _items.isEmpty
-          ? const _EmptyState()
-          : ListView.separated(
-        padding: const EdgeInsets.symmetric(vertical: 8),
-        itemCount: _items.length,
-        separatorBuilder: (_, __) =>
-            Divider(height: 1, color: cs.outlineVariant),
-        itemBuilder: (context, i) {
-          final item = _items[i];
-          return Dismissible(
-            key: ValueKey(item.id),
-            direction: DismissDirection.endToStart,
-            background: Container(
-              alignment: Alignment.centerRight,
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              color: Colors.red.withValues(alpha: .85),
-              child: const Icon(Icons.delete, color: Colors.white),
-            ),
-            onDismissed: (_) => _deleteAt(i),
-            child: _FavoriteTile(
-              item: item,
-              onDelete: () => _deleteAt(i),
-            ),
-          );
-        },
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _addFavoriteDialog,
-        icon: const Icon(Icons.add_rounded),
-        label: const Text('추가'),
+        body: _items.isEmpty
+            ? const _EmptyState()
+            : ListView.separated(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          itemCount: _items.length,
+          separatorBuilder: (_, __) =>
+              Divider(height: 1, color: cs.outlineVariant),
+          itemBuilder: (context, i) {
+            final item = _items[i];
+            return Dismissible(
+              key: ValueKey(item.id),
+              direction: DismissDirection.endToStart,
+              background: Container(
+                alignment: Alignment.centerRight,
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                color: Colors.red.withOpacity(.85),
+                child: const Icon(Icons.delete, color: Colors.white),
+              ),
+              onDismissed: (_) => _deleteAt(i),
+              child: _FavoriteTile(
+                item: item,
+                onDelete: () => _deleteAt(i),
+              ),
+            );
+          },
+        ),
+        floatingActionButton: FloatingActionButton.extended(
+          onPressed: _addFavoriteDialog,
+          icon: const Icon(Icons.add_rounded),
+          label: const Text('추가'),
+        ),
       ),
     );
   }
 }
 
-/// ✅ 빈 상태 (간격 ↓, 글자 크기 ↑)
+/// ✅ 빈 상태 (아이콘 → 내 이미지로 교체)
 class _EmptyState extends StatelessWidget {
   const _EmptyState();
 
@@ -236,29 +248,37 @@ class _EmptyState extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // 문구: 더 크게/굵게
           Padding(
-            padding: const EdgeInsets.only(bottom: 6), // ⬅ 간격 12 → 6 로 축소
+            padding: const EdgeInsets.only(bottom: 6),
             child: Text(
               '즐겨 찾는 주차장이 없습니다',
-              style: txt.titleMedium?.copyWith( // body → title로 업그레이드
-                fontSize: 18,                 // ⬅ 글자 크게
+              style: txt.titleMedium?.copyWith(
+                fontSize: 18,
                 fontWeight: FontWeight.w700,
                 color: cs.onSurface,
               ),
               textAlign: TextAlign.center,
             ),
           ),
-          // 아이콘/에셋: 필요 시 size 조절
-          // Image.asset('assets/icons/empty.png', width: 56, height: 56),
-          Icon(Icons.map_rounded, size: 56, color: cs.onSurface),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: Image.asset(
+              'lib/assets/icons/app_icon/bookmark_icon.png', // 네 이미지 경로
+              width: 72,
+              height: 72,
+              fit: BoxFit.contain,
+              errorBuilder: (_, __, ___) {
+                return Icon(Icons.map_rounded, size: 56, color: cs.onSurface);
+              },
+            ),
+          ),
         ],
       ),
     );
   }
 }
 
-/// 한 줄 타일
+/// 한 줄 타일 (썸네일 없는 경우 기존 아이콘 유지)
 class _FavoriteTile extends StatelessWidget {
   const _FavoriteTile({required this.item, required this.onDelete});
   final FavoriteItem item;
@@ -277,7 +297,7 @@ class _FavoriteTile extends StatelessWidget {
             ? Container(
           width: 54,
           height: 54,
-          color: cs.surfaceVariant.withValues(alpha: .4),
+          color: cs.surfaceVariant.withOpacity(.4),
           child: Icon(Icons.local_parking_rounded,
               color: cs.onSurfaceVariant),
         )
@@ -288,10 +308,10 @@ class _FavoriteTile extends StatelessWidget {
           fit: BoxFit.cover,
         ),
       ),
-      // 제목/부제목도 조금 키울 수 있어요 (원하면 아래 주석 해제)
       title: Text(
         item.name,
-        style: txt.titleMedium?.copyWith(fontSize: 17, fontWeight: FontWeight.w600),
+        style:
+        txt.titleMedium?.copyWith(fontSize: 17, fontWeight: FontWeight.w600),
       ),
       subtitle: item.address == null
           ? null
@@ -308,7 +328,7 @@ class _FavoriteTile extends StatelessWidget {
         onPressed: onDelete,
       ),
       onTap: () {
-        // TODO: 상세 페이지로 이동 연결 지점
+        // TODO: 상세 페이지로 이동 연결
       },
     );
   }

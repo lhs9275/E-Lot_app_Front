@@ -2,7 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-void main() => runApp(const _ReviewApp());
+void main() => runApp(const _ReviewApp(key: ValueKey('_reviewAppRoot')));
 
 class _ReviewApp extends StatelessWidget {
   const _ReviewApp({super.key});
