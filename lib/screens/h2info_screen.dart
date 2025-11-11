@@ -1,4 +1,4 @@
-// lib/screens/info_screen.dart
+// lib/screens/h2info_screen.dart
 
 import 'package:flutter/material.dart';
 import '../models/h2_station.dart';

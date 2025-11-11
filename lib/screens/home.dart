@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'info_screen.dart';
+import 'h2info_screen.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
