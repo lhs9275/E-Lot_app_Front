@@ -6,7 +6,7 @@
 
 ## 1. 주요 기능
 - **카카오 로그인**: `WelcomeScreen`에서 카카오톡/카카오계정 로그인을 지원하고 발급받은 토큰을 안전하게 보관합니다.
-- **충전소 지도**: `MapScreen`에서 네이버 지도 SDK로 충전소 위치와 상태를 표시하고, 마커 클릭 시 상세 정보를 보여줍니다.
+- **충전소 지도**: `MapScreen`이 `H2StationApiService`를 통해 실시간 데이터를 불러온 뒤 위경도가 있는 충전소만 지도에 마커로 표시합니다. 마커를 누르면 운영 상태, 대기 차량 수, 최종 갱신 시각이 바텀시트로 노출됩니다.
 - **공통 초기화**: `.env` 값을 읽어 API, Kakao SDK, 지도 SDK 초기화를 한 번에 처리합니다.
 
 ---
@@ -118,6 +118,15 @@ flutter run
 - **네이버 지도 초기화 실패**: `.env`에 `NAVER_MAP_CLIENT_ID`가 있는지 확인하고, 콘솔 로그를 참고하세요.
 - **카카오 로그인 에러**: 카카오 개발자 콘솔에서 앱 키, 플랫폼(앱 패키지명/번들 ID) 설정을 확인하세요.
 - **H2 API 호출 실패**: `H2_API_BASE_URL`이 실제 서버 URL인지, HTTP/HTTPS 프로토콜이 맞는지 검토하세요.
+
+---
+
+## 10. H2 지도 데이터 흐름
+1. `main.dart`에서 `.env`를 읽고 없으면 기본값 `https://clos21.kr`을 사용해 `configureH2StationApi()`를 호출합니다.
+2. `MapScreen.initState()`가 시작되면 `_loadStations()`가 실행되어 `h2StationApi.fetchStations()`로 `/mapi/h2/stations?type=all` 데이터를 불러옵니다.
+3. 응답 JSON은 `H2Station.fromJson()`에서 실시간 정보(`realtime`)와 운영 정보(`operation`)를 조합해 위경도, 대기 차량 수, 최종 갱신 시각을 안전하게 파싱합니다.
+4. 좌표가 있는 충전소만 `_stationsWithCoordinates`에 남기고, `_renderStationMarkers()`가 네이버 지도에 `NMarker`로 표시합니다.
+5. 마커를 탭하면 `_showStationBottomSheet()`가 바텀시트로 상세 정보를 노출하며, 상단 배지와 로딩/에러 배너는 `_isLoadingStations`, `_stationError` 상태에 따라 자동으로 갱신됩니다.
 
 ---
 
