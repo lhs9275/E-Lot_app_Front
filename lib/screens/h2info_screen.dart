@@ -65,7 +65,7 @@ class _InfoScreenState extends State<InfoScreen> {
                       Text('상태: ${station.statusName}'),
                       Text('대기 차량: ${station.waitingCount ?? 0}대'),
                       Text('최대 충전 가능: ${station.maxChargeCount ?? 0}대'),
-                      Text('최종 갱신: ${station.lastModifiedAt}'),
+                      Text('최종 갱신: ${station.lastModifiedAt ?? '정보 없음'}'),
                     ],
                   ),
                 ),

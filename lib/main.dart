@@ -37,7 +37,7 @@ Future<void> main() async {
 String _resolveH2BaseUrl() {
   final value = dotenv.env['H2_API_BASE_URL']?.trim();
   if (value == null || value.isEmpty) {
-    const fallback = 'http://10.0.2.2:8443';
+    const fallback = 'https://clos21.kr';
     debugPrint(
       '[H2 API] H2_API_BASE_URL가 설정되지 않아 기본값($fallback)을 사용합니다. 실제 서버 주소를 .env에 설정하세요.',
     );

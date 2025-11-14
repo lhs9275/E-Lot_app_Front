@@ -16,7 +16,7 @@ class H2StationApiService {
   H2StationApiService({required this.baseUrl});
 
   Future<List<H2Station>> fetchStations() async {
-    final url = Uri.parse('https://clos21.kr/mapi/h2/stations');
+    final url = _buildStationsUri();
     final response = await http.get(url);
 
     if (response.statusCode == 200) {
@@ -28,5 +28,11 @@ class H2StationApiService {
     } else {
       throw Exception('충전소 정보를 불러오지 못했습니다: ${response.statusCode}');
     }
+  }
+
+  Uri _buildStationsUri() {
+    final normalized =
+        baseUrl.endsWith('/') ? baseUrl.substring(0, baseUrl.length - 1) : baseUrl;
+    return Uri.parse('$normalized/mapi/h2/stations?type=all');
   }
 }
