@@ -38,6 +38,15 @@ android {
         jvmTarget = JavaVersion.VERSION_11.toString()
     }
 
+    signingConfigs {
+        create("sharedDebug") {
+            storeFile = file("keystore/shared-debug.keystore")
+            storePassword = "psp2fnShared"
+            keyAlias = "shareddebug"
+            keyPassword = "psp2fnShared"
+        }
+    }
+
     defaultConfig {
         // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
         applicationId = "kr.clos21.psp2fn"
@@ -52,10 +61,13 @@ android {
     }
 
     buildTypes {
+        debug {
+            signingConfig = signingConfigs.getByName("sharedDebug")
+        }
         release {
             // TODO: Add your own signing config for the release build.
             // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName("sharedDebug")
         }
     }
 }
