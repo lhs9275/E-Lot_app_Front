@@ -22,7 +22,7 @@ class _MapScreenState extends State<MapScreen> {
   // 시작 위치 (예: 서울시청)
   final NLatLng _initialTarget = const NLatLng(37.5666, 126.9790);
   late final NCameraPosition _initialCamera =
-      NCameraPosition(target: _initialTarget, zoom: 8.5);
+  NCameraPosition(target: _initialTarget, zoom: 8.5);
 
   int _selectedIndex = 0;
 
@@ -42,6 +42,23 @@ class _MapScreenState extends State<MapScreen> {
               options: NaverMapViewOptions(
                 initialCameraPosition: _initialCamera,
                 locationButtonEnable: true,
+              ),
+              clusterOptions: NaverMapClusteringOptions(
+                mergeStrategy: const NClusterMergeStrategy(
+                  willMergedScreenDistance: {
+                    NaverMapClusteringOptions.defaultClusteringZoomRange: 35,
+                  },
+                ),
+                clusterMarkerBuilder: (info, clusterMarker) {
+                  clusterMarker.setIsFlat(true);
+                  clusterMarker.setCaption(
+                    NOverlayCaption(
+                      text: info.size.toString(),
+                      color: Colors.white,
+                      haloColor: Colors.blueAccent,
+                    ),
+                  );
+                },
               ),
               onMapReady: _handleMapReady,
             ),
@@ -65,10 +82,10 @@ class _MapScreenState extends State<MapScreen> {
         onPressed: _isLoadingStations ? null : _onCenterButtonPressed,
         child: _isLoadingStations
             ? const SizedBox(
-                width: 20,
-                height: 20,
-                child: CircularProgressIndicator(strokeWidth: 2.4),
-              )
+          width: 20,
+          height: 20,
+          child: CircularProgressIndicator(strokeWidth: 2.4),
+        )
             : const Icon(Icons.refresh),
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
@@ -254,44 +271,42 @@ class _MapScreenState extends State<MapScreen> {
 
     try {
       await controller.clearOverlays(type: NOverlayType.marker);
-    } catch (_) {
-      // ignore controller clear errors
-    }
+    } catch (_) {}
 
     if (_mappableStationCount == 0) return;
 
     final overlays = _stationsWithCoordinates
         .map((station) {
-          final lat = station.latitude!;
-          final lng = station.longitude!;
-          final markerId = 'h2_marker_${station.stationName}_$lat$lng';
+      final lat = station.latitude!;
+      final lng = station.longitude!;
+      final markerId = 'h2_marker_${station.stationName}_$lat$lng';
 
-          final marker = NMarker(
-            id: markerId,
-            position: NLatLng(lat, lng),
-            caption: NOverlayCaption(
-              text: station.stationName,
-              textSize: 12,
-              color: Colors.black,
-              haloColor: Colors.white,
-            ),
-            iconTintColor: _statusColor(station.statusName),
-          );
+      final marker = NClusterableMarker(
+        id: markerId,
+        position: NLatLng(lat, lng),
+        caption: NOverlayCaption(
+          text: station.stationName,
+          textSize: 12,
+          color: Colors.black,
+          haloColor: Colors.white,
+        ),
+        iconTintColor: _statusColor(station.statusName),
+      );
 
-          marker.setOnTapListener((overlay) {
-            _showStationBottomSheet(station);
-          });
-          return marker;
-        })
+      marker.setOnTapListener((overlay) {
+        _showStationBottomSheet(station);
+      });
+      return marker;
+    })
         .toSet();
 
     if (overlays.isEmpty) return;
     await controller.addOverlayAll(overlays);
   }
 
-  Iterable<H2Station> get _stationsWithCoordinates => _stations.where(
-        (station) => station.latitude != null && station.longitude != null,
-      );
+  Iterable<H2Station> get _stationsWithCoordinates =>
+      _stations.where((station) =>
+      station.latitude != null && station.longitude != null);
 
   int get _mappableStationCount => _stationsWithCoordinates.length;
 
@@ -299,7 +314,7 @@ class _MapScreenState extends State<MapScreen> {
     final normalized = statusName.trim();
     switch (normalized) {
       case '영업중':
-        return Colors.green;
+        return Colors.blue; // 여기서 색 바꾸는 중
       case '점검중':
       case 'T/T교체':
         return Colors.orange;
@@ -326,8 +341,8 @@ class _MapScreenState extends State<MapScreen> {
               Text(
                 station.stationName,
                 style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.bold,
-                    ),
+                  fontWeight: FontWeight.bold,
+                ),
               ),
               const SizedBox(height: 8),
               _buildStationField('운영 상태', station.statusName),
@@ -412,7 +427,6 @@ class _MapScreenState extends State<MapScreen> {
   }
 }
 
-/// 하단 네비 아이템(아이콘+텍스트)
 class _NavItem extends StatelessWidget {
   final IconData icon;
   final String label;
