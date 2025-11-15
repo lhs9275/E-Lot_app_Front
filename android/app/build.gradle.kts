@@ -7,7 +7,12 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
-val envFile = rootProject.file(".env")
+val envFile = listOf(
+    // Flutter 프로젝트 루트에 있는 .env 사용 (android/ 한 단계 위)
+    rootProject.file("../.env"),
+    // 혹시 모듈 내부에 별도 .env가 있는 경우 대비
+    rootProject.file(".env")
+).firstOrNull { it.exists() } ?: rootProject.file("../.env")
 val envProps = Properties().apply {
     if (envFile.exists()) {
         envFile.inputStream().use { load(it) }
