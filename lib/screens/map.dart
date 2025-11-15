@@ -19,6 +19,7 @@ class _MapScreenState extends State<MapScreen> {
   bool _isLoadingStations = true;
   String? _stationError;
 
+  // 시작 위치 (예: 서울시청)
   final NLatLng _initialTarget = const NLatLng(37.5666, 126.9790);
   late final NCameraPosition _initialCamera =
       NCameraPosition(target: _initialTarget, zoom: 8.5);
@@ -411,6 +412,7 @@ class _MapScreenState extends State<MapScreen> {
   }
 }
 
+/// 하단 네비 아이템(아이콘+텍스트)
 class _NavItem extends StatelessWidget {
   final IconData icon;
   final String label;

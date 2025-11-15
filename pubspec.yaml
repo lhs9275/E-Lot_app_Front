@@ -31,6 +31,8 @@ flutter:
 
   assets:
     - lib/assets/icons/welcome_sc/
+    - lib/assets/icons/mascot_character/
+    - lib/assets/icons/app_icon/
     - .env
 
 flutter_icons:
