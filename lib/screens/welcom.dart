@@ -156,16 +156,15 @@ class WelcomeScreen extends StatelessWidget {
                 ),
                 // 버튼 영역
                 SizedBox(
-                  child: Positioned(
-                    left: 0,
-                    top: 0, // 숫자 튜닝해서 내려주면 됨
+                  child: Align(
+                    alignment: Alignment.centerLeft,
                     child: SvgPicture.asset(
                       'lib/assets/icons/welcome_sc/cute_under_bar.svg',
                       width: 200,
                       height: 200,
                     ),
                   ),
-                ), //
+                ),
                 SizedBox(
                   height: 60,
                   child: ElevatedButton(

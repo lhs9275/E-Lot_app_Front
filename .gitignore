@@ -24,6 +24,7 @@ android/**/build/
 
 # (Firebase 쓰면 주석 풀고, 레포에 안 올리는 걸 추천)
 # android/app/google-services.json
+android/app/keystore/
 
 # ---- iOS ----
 ios/Pods/
