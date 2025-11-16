@@ -4,7 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_naver_map/flutter_naver_map.dart';
 
 import '../models/h2_station.dart';
+import '../models/ev_station.dart';
 import '../services/h2_station_api_service.dart';
+import '../services/ev_station_api_service.dart';
 
 class MapScreen extends StatefulWidget {
   const MapScreen({super.key});
@@ -15,8 +17,10 @@ class MapScreen extends StatefulWidget {
 
 class _MapScreenState extends State<MapScreen> {
   NaverMapController? _controller;
-  List<H2Station> _stations = [];
-  bool _isLoadingStations = true;
+  List<H2Station> _h2Stations = [];
+  List<EVStation> _evStations = [];
+  bool _isLoadingH2Stations = true;
+  bool _isLoadingEvStations = true;
   String? _stationError;
 
   // 시작 위치 (예: 서울시청)
@@ -29,7 +33,7 @@ class _MapScreenState extends State<MapScreen> {
   @override
   void initState() {
     super.initState();
-    _loadStations();
+    _loadAllStations();
   }
 
   @override
@@ -62,15 +66,15 @@ class _MapScreenState extends State<MapScreen> {
               ),
               onMapReady: _handleMapReady,
             ),
-            if (_isLoadingStations) _buildLoadingBanner(),
+            if (_isInitialLoading) _buildLoadingBanner(),
             if (_stationError != null) _buildErrorBanner(),
-            if (!_isLoadingStations &&
+            if (!_isInitialLoading &&
                 _stationError == null &&
-                _mappableStationCount > 0)
+                _totalMappableStationCount > 0)
               _buildStationsBadge(),
-            if (!_isLoadingStations &&
+            if (!_isInitialLoading &&
                 _stationError == null &&
-                _mappableStationCount == 0)
+                _totalMappableStationCount == 0)
               _buildInfoBanner(
                 icon: Icons.info_outline,
                 message: '표시할 충전소 위치 데이터가 없습니다.',
@@ -79,8 +83,8 @@ class _MapScreenState extends State<MapScreen> {
         ),
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: _isLoadingStations ? null : _onCenterButtonPressed,
-        child: _isLoadingStations
+        onPressed: _isInitialLoading ? null : _onCenterButtonPressed,
+        child: _isInitialLoading
             ? const SizedBox(
           width: 20,
           height: 20,
@@ -228,7 +232,7 @@ class _MapScreenState extends State<MapScreen> {
       left: 16,
       child: Chip(
         avatar: const Icon(Icons.ev_station, size: 16, color: Colors.white),
-        label: Text('표시 중: $_mappableStationCount개 충전소'),
+        label: Text('표시 중: $_totalMappableStationCount개 충전소(H2+EV)'),
         backgroundColor: Colors.black.withValues(alpha: 0.7),
         labelStyle: const TextStyle(color: Colors.white),
         padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -241,27 +245,57 @@ class _MapScreenState extends State<MapScreen> {
     unawaited(_renderStationMarkers());
   }
 
-  Future<void> _loadStations() async {
+  Future<void> _loadAllStations() async {
     setState(() {
-      _isLoadingStations = true;
+      _isLoadingH2Stations = true;
+      _isLoadingEvStations = true;
       _stationError = null;
     });
+    await Future.wait([
+      _loadH2Stations(),
+      _loadEvStations(),
+    ]);
+  }
 
+  Future<void> _loadStations() async {
+    await _loadAllStations();
+  }
+
+  Future<void> _loadH2Stations() async {
     try {
       final stations = await h2StationApi.fetchStations();
       if (!mounted) return;
       setState(() {
-        _stations = stations;
-        _isLoadingStations = false;
+        _h2Stations = stations;
+        _isLoadingH2Stations = false;
       });
       unawaited(_renderStationMarkers());
     } catch (error) {
       if (!mounted) return;
       setState(() {
-        _isLoadingStations = false;
-        _stationError = '충전소 데이터를 불러오지 못했습니다.';
+        _isLoadingH2Stations = false;
+        _stationError ??= '수소 충전소 데이터를 불러오지 못했습니다.';
       });
       debugPrint('H2 station fetch failed: $error');
+    }
+  }
+
+  Future<void> _loadEvStations() async {
+    try {
+      final stations = await evStationApi.fetchStations();
+      if (!mounted) return;
+      setState(() {
+        _evStations = stations;
+        _isLoadingEvStations = false;
+      });
+      unawaited(_renderStationMarkers());
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _isLoadingEvStations = false;
+        _stationError ??= '전기 충전소 데이터를 불러오지 못했습니다.';
+      });
+      debugPrint('EV station fetch failed: $error');
     }
   }
 
@@ -273,44 +307,78 @@ class _MapScreenState extends State<MapScreen> {
       await controller.clearOverlays(type: NOverlayType.marker);
     } catch (_) {}
 
-    if (_mappableStationCount == 0) return;
+    final overlays = <NClusterableMarker>{};
 
-    final overlays = _stationsWithCoordinates
-        .map((station) {
-      final lat = station.latitude!;
-      final lng = station.longitude!;
-      final markerId = 'h2_marker_${station.stationName}_$lat$lng';
+    overlays.addAll(
+      _h2StationsWithCoordinates.map((station) {
+        final lat = station.latitude!;
+        final lng = station.longitude!;
+        final markerId = 'h2_marker_${station.stationName}_$lat$lng';
 
-      final marker = NClusterableMarker(
-        id: markerId,
-        position: NLatLng(lat, lng),
-        caption: NOverlayCaption(
-          text: station.stationName,
-          textSize: 12,
-          color: Colors.black,
-          haloColor: Colors.white,
-        ),
-        iconTintColor: _statusColor(station.statusName),
-      );
+        final marker = NClusterableMarker(
+          id: markerId,
+          position: NLatLng(lat, lng),
+          caption: NOverlayCaption(
+            text: station.stationName,
+            textSize: 12,
+            color: Colors.black,
+            haloColor: Colors.white,
+          ),
+          iconTintColor: _h2StatusColor(station.statusName),
+        );
 
-      marker.setOnTapListener((overlay) {
-        _showStationBottomSheet(station);
-      });
-      return marker;
-    })
-        .toSet();
+        marker.setOnTapListener((overlay) {
+          _showH2StationBottomSheet(station);
+        });
+        return marker;
+      }),
+    );
+
+    overlays.addAll(
+      _evStationsWithCoordinates.map((station) {
+        final lat = station.latitude!;
+        final lng = station.longitude!;
+        final markerId = 'ev_marker_${station.stationId}_$lat$lng';
+
+        final marker = NClusterableMarker(
+          id: markerId,
+          position: NLatLng(lat, lng),
+          caption: NOverlayCaption(
+            text: station.stationName,
+            textSize: 12,
+            color: Colors.black,
+            haloColor: Colors.white,
+          ),
+          iconTintColor: _evStatusColor(station.statusLabel),
+        );
+
+        marker.setOnTapListener((overlay) {
+          _showEvStationBottomSheet(station);
+        });
+        return marker;
+      }),
+    );
 
     if (overlays.isEmpty) return;
     await controller.addOverlayAll(overlays);
   }
 
-  Iterable<H2Station> get _stationsWithCoordinates =>
-      _stations.where((station) =>
-      station.latitude != null && station.longitude != null);
+  Iterable<H2Station> get _h2StationsWithCoordinates =>
+      _h2Stations.where(
+        (station) => station.latitude != null && station.longitude != null,
+      );
 
-  int get _mappableStationCount => _stationsWithCoordinates.length;
+  Iterable<EVStation> get _evStationsWithCoordinates =>
+      _evStations.where(
+        (station) => station.latitude != null && station.longitude != null,
+      );
 
-  Color _statusColor(String statusName) {
+  int get _totalMappableStationCount =>
+      _h2StationsWithCoordinates.length + _evStationsWithCoordinates.length;
+
+  bool get _isInitialLoading => _isLoadingH2Stations || _isLoadingEvStations;
+
+  Color _h2StatusColor(String statusName) {
     final normalized = statusName.trim();
     switch (normalized) {
       case '영업중':
@@ -325,7 +393,22 @@ class _MapScreenState extends State<MapScreen> {
     }
   }
 
-  void _showStationBottomSheet(H2Station station) {
+  Color _evStatusColor(String statusLabel) {
+    final normalized = statusLabel.trim();
+    switch (normalized) {
+      case '충전대기':
+        return Colors.green;
+      case '충전중':
+        return Colors.orange;
+      case '점검중':
+      case '고장':
+        return Colors.redAccent;
+      default:
+        return Colors.blueGrey;
+    }
+  }
+
+  void _showH2StationBottomSheet(H2Station station) {
     if (!mounted) return;
 
     showModalBottomSheet<void>(
@@ -360,6 +443,39 @@ class _MapScreenState extends State<MapScreen> {
                 '최종 갱신',
                 station.lastModifiedAt ?? '정보 없음',
               ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  void _showEvStationBottomSheet(EVStation station) {
+    if (!mounted) return;
+
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) {
+        return Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                station.stationName,
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 8),
+              _buildStationField('상태', '${station.statusLabel} (${station.status})'),
+              _buildStationField('출력', station.outputKw != null ? '${station.outputKw} kW' : '정보 없음'),
+              _buildStationField('최근 갱신', station.statusUpdatedAt ?? '정보 없음'),
+              _buildStationField('주소', '${station.address ?? ''} ${station.addressDetail ?? ''}'.trim()),
+              _buildStationField('무료주차', station.parkingFree == true ? '예' : '아니요'),
+              _buildStationField('층/구역', '${station.floor ?? '-'} / ${station.floorType ?? '-'}'),
             ],
           ),
         );
@@ -417,7 +533,7 @@ class _MapScreenState extends State<MapScreen> {
   }
 
   void _onCenterButtonPressed() {
-    _loadStations();
+    _loadAllStations();
   }
 
   @override
