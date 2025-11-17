@@ -70,6 +70,7 @@ flutter run
 
 > `.env` 파일은 민감 정보가 포함되므로 Git에 추가하지 마세요. 이미 `.gitignore`에 등록돼 있어 추적되지 않도록 구성돼 있습니다.  
 > 키가 비어 있으면 `lib/main.dart`의 `_resolveH2BaseUrl()`이 기본값(`https://clos21.kr`)을 사용하면서 콘솔에 경고를 남깁니다.
+> Kakao 키(`KAKAO_NATIVE_APP_KEY`, `KAKAO_JAVASCRIPT_APP_KEY`)가 비어 있으면 앱이 Kakao SDK 초기화를 건너뛰고 웰컴 화면에서 경고를 표시하며 로그인 버튼을 막습니다.
 
 ---
 
@@ -85,7 +86,7 @@ flutter run
 
 ## 7. 동작 흐름
 1. `main()`이 `WidgetsFlutterBinding`을 초기화하고 `.env`를 로드한 뒤 `_configureHttpOverrides()`와 `configureH2StationApi(_resolveH2BaseUrl())`를 수행합니다.
-2. 같은 함수에서 `_initializeNaverMap()`과 `KakaoSdk.init()`을 끝내고 `runApp(const MyApp())`으로 앱을 실행합니다.
+2. 같은 함수에서 `_initializeNaverMap()`과 Kakao SDK 초기화를 끝내고 `.env` 키 상태(`isKakaoConfigured`)를 `MyApp`으로 전달해 앱을 실행합니다.
 3. `WelcomeScreen`이 카카오 로그인을 시도하고 Clos21 백엔드와 토큰을 교환한 뒤 `TokenStorage`에 access/refresh 토큰을 저장합니다.
 4. 로그인 성공 시 `MapScreen`으로 이동해 `_loadStations()`가 `h2StationApi.fetchStations()` 결과를 받아오고, 마커/배지/바텀시트를 갱신합니다.
 

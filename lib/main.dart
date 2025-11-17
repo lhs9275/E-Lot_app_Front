@@ -14,6 +14,21 @@ Future<void> main() async {
 
   // 1. .env 로드 (여기서 꼭 await!)
   await dotenv.load(fileName: ".env");
+  final kakaoNativeAppKey = dotenv.env['KAKAO_NATIVE_APP_KEY']?.trim();
+  final kakaoJavaScriptAppKey =
+      dotenv.env['KAKAO_JAVASCRIPT_APP_KEY']?.trim();
+
+  final missingKakaoKeys = <String>[];
+  if (kakaoNativeAppKey == null || kakaoNativeAppKey.isEmpty) {
+    missingKakaoKeys.add('KAKAO_NATIVE_APP_KEY');
+  }
+  if (kakaoJavaScriptAppKey == null || kakaoJavaScriptAppKey.isEmpty) {
+    missingKakaoKeys.add('KAKAO_JAVASCRIPT_APP_KEY');
+  }
+
+  final kakaoConfigError = missingKakaoKeys.isEmpty
+      ? null
+      : '카카오 SDK 키 누락: ${missingKakaoKeys.join(', ')} — 프로젝트 루트의 .env를 확인하세요.';
 
   // 2. 개발 환경에서만 자체 서명 인증서 허용
   _configureHttpOverrides();
@@ -27,14 +42,23 @@ Future<void> main() async {
   await _initializeNaverMap();
 
   // 5. 로드된 값으로 KakaoSdk 초기화
-  KakaoSdk.init(
-    nativeAppKey: dotenv.env['KAKAO_NATIVE_APP_KEY'] ?? '',
-    javaScriptAppKey: dotenv.env['KAKAO_JAVASCRIPT_APP_KEY'] ?? '',
-    // 또는 dotenv.get('KAKAO_NATIVE_APP_KEY') 써도 됨 (없으면 에러 던짐)
-  );
+  if (missingKakaoKeys.isEmpty) {
+    KakaoSdk.init(
+      nativeAppKey: kakaoNativeAppKey!,
+      javaScriptAppKey: kakaoJavaScriptAppKey!,
+      // 또는 dotenv.get('KAKAO_NATIVE_APP_KEY') 써도 됨 (없으면 에러 던짐)
+    );
+  } else {
+    debugPrint('[KakaoSdk] 초기화를 건너뜁니다: $kakaoConfigError');
+  }
 
   // 6. 앱 실행
-  runApp(const MyApp());
+  runApp(
+    MyApp(
+      isKakaoConfigured: missingKakaoKeys.isEmpty,
+      kakaoConfigError: kakaoConfigError,
+    ),
+  );
 }
 
 String _resolveH2BaseUrl() {
@@ -105,7 +129,14 @@ class _InsecureHttpOverrides extends HttpOverrides {
 }
 
 class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+  const MyApp({
+    super.key,
+    required this.isKakaoConfigured,
+    this.kakaoConfigError,
+  });
+
+  final bool isKakaoConfigured;
+  final String? kakaoConfigError;
 
   @override
   Widget build(BuildContext context) {
@@ -117,7 +148,10 @@ class MyApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF3B82F6)),
         useMaterial3: true,
       ),
-      home: const WelcomeScreen(),
+      home: WelcomeScreen(
+        isKakaoConfigured: isKakaoConfigured,
+        kakaoConfigError: kakaoConfigError,
+      ),
     );
   }
 }
