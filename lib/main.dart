@@ -12,28 +12,28 @@ import 'services/ev_station_api_service.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // 1. .env 로드 (여기서 꼭 await!)
+  // 1. .env 로드 (?�기??�?await!)
   await dotenv.load(fileName: ".env");
 
-  // 2. 개발 환경에서만 자체 서명 인증서 허용
+  // 2. 개발 ?�경?�서�??�체 ?�명 ?�증???�용
   _configureHttpOverrides();
 
-  // 3. H2 API 서비스 구성 (환경 변수 없으면 기본값)
+  // 3. H2 API ?�비??구성 (?�경 변???�으�?기본�?
   configureH2StationApi(baseUrl: _resolveH2BaseUrl());
-  // EV API는 로컬 개발용 별도 베이스 URL 사용(.env에 EV_API_BASE_URL 설정)
+  // EV API??로컬 개발??별도 베이??URL ?�용(.env??EV_API_BASE_URL ?�정)
   configureEVStationApi(baseUrl: _resolveEvBaseUrl());
 
-  // 4. 네이버 지도 SDK 초기화
+  // 4. ?�이�?지??SDK 초기??
   await _initializeNaverMap();
 
-  // 5. 로드된 값으로 KakaoSdk 초기화
+  // 5. 로드??값으�?KakaoSdk 초기??
   KakaoSdk.init(
     nativeAppKey: dotenv.env['KAKAO_NATIVE_APP_KEY'] ?? '',
     javaScriptAppKey: dotenv.env['KAKAO_JAVASCRIPT_APP_KEY'] ?? '',
-    // 또는 dotenv.get('KAKAO_NATIVE_APP_KEY') 써도 됨 (없으면 에러 던짐)
+    // ?�는 dotenv.get('KAKAO_NATIVE_APP_KEY') ?�도 ??(?�으�??�러 ?�짐)
   );
 
-  // 6. 앱 실행
+  // 6. ???�행
   runApp(const MyApp());
 }
 
@@ -42,7 +42,7 @@ String _resolveH2BaseUrl() {
   if (value == null || value.isEmpty) {
     const fallback = 'https://clos21.kr';
     debugPrint(
-      '[H2 API] H2_API_BASE_URL가 설정되지 않아 기본값($fallback)을 사용합니다. 실제 서버 주소를 .env에 설정하세요.',
+      '[H2 API] H2_API_BASE_URL가 ?�정?��? ?�아 기본�?$fallback)???�용?�니?? ?�제 ?�버 주소�?.env???�정?�세??',
     );
     return fallback;
   }
@@ -52,10 +52,10 @@ String _resolveH2BaseUrl() {
 String _resolveEvBaseUrl() {
   final value = dotenv.env['EV_API_BASE_URL']?.trim();
   if (value == null || value.isEmpty) {
-    // 에뮬레이터/실기기에서 로컬호스트로 접속할 때 기본값(안드로이드는 10.0.2.2)
+    // ?��??�이???�기기에??로컬?�스?�로 ?�속????기본�??�드로이?�는 10.0.2.2)
     const fallback = 'http://10.0.2.2:8080';
     debugPrint(
-      '[EV API] EV_API_BASE_URL가 설정되지 않아 기본값($fallback)을 사용합니다. 로컬 서버 주소를 .env에 설정하세요.',
+      '[EV API] EV_API_BASE_URL가 ?�정?��? ?�아 기본�?$fallback)???�용?�니?? 로컬 ?�버 주소�?.env???�정?�세??',
     );
     return fallback;
   }
@@ -66,7 +66,7 @@ void _configureHttpOverrides() {
   if (kIsWeb || !_shouldAllowInsecureSsl()) return;
   HttpOverrides.global = _InsecureHttpOverrides();
   debugPrint(
-    '[H2 API] 자체 서명 인증서를 허용하도록 HttpOverrides를 적용했습니다. 배포 빌드에서는 비활성화하세요.',
+    '[H2 API] ?�체 ?�명 ?�증?��? ?�용?�도�?HttpOverrides�??�용?�습?�다. 배포 빌드?�서??비활?�화?�세??',
   );
 }
 
@@ -86,11 +86,11 @@ Future<void> _initializeNaverMap() async {
     await FlutterNaverMap().init(
       clientId: clientId,
       onAuthFailed: (ex) =>
-          debugPrint('[NaverMap] 인증 실패 (code: ${ex.code}): ${ex.message}'),
+          debugPrint('[NaverMap] ?�증 ?�패 (code: ${ex.code}): ${ex.message}'),
     );
   } catch (error) {
     debugPrint(
-      '[NaverMap] 초기화 실패: $error — .env에 NAVER_MAP_CLIENT_ID를 설정했는지 확인하세요.',
+      '[NaverMap] 초기???�패: $error ??.env??NAVER_MAP_CLIENT_ID�??�정?�는지 ?�인?�세??',
     );
   }
 }
