@@ -1,10 +1,57 @@
+// lib/screens/map.dart
 import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_naver_map/flutter_naver_map.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:http/http.dart' as http;
 
 import '../models/h2_station.dart';
 import '../services/h2_station_api_service.dart';
+import 'favorite.dart'; // ⭐ 즐겨찾기 페이지 연결
+
+/// ✅ 이 파일 단독 실행용 엔트리 포인트
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  await dotenv.load(fileName: '.env');
+
+  final clientId = dotenv.env['NAVER_MAP_CLIENT_ID'];
+  if (clientId == null || clientId.isEmpty) {
+    debugPrint('❌ NAVER_MAP_CLIENT_ID가 .env에 없습니다.');
+  }
+
+  // 새 방식 init (권장)
+  await FlutterNaverMap().init(
+    clientId: clientId ?? '',
+    onAuthFailed: (ex) {
+      debugPrint('NaverMap auth failed: $ex');
+    },
+  );
+
+  // H2 API 인스턴스 초기화 (이미 전역으로 있다면 이 부분은 네 프로젝트 구조에 맞게)
+  final h2BaseUrl = dotenv.env['H2_API_BASE_URL'];
+  if (h2BaseUrl == null || h2BaseUrl.isEmpty) {
+    debugPrint('❌ H2_API_BASE_URL 이 .env에 없습니다.');
+  } else {
+    h2StationApi = H2StationApiService(baseUrl: h2BaseUrl);
+  }
+
+  runApp(const _MapApp());
+}
+
+/// 🔹 MapScreen만 보여주는 최소 앱 래퍼
+class _MapApp extends StatelessWidget {
+  const _MapApp({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return const MaterialApp(
+      debugShowCheckedModeBanner: false,
+      home: MapScreen(),
+    );
+  }
+}
 
 class MapScreen extends StatefulWidget {
   const MapScreen({super.key});
@@ -26,6 +73,77 @@ class _MapScreenState extends State<MapScreen> {
 
   int _selectedIndex = 0;
 
+  /// ⭐ 백엔드 주소 (clos21)
+  static const String _backendBaseUrl = 'https://clos21.kr';
+
+  /// ⭐ 즐겨찾기 상태 (stationId 기준)
+  final Set<String> _favoriteStationIds = {};
+
+  bool _isFavoriteStation(H2Station station) =>
+      _favoriteStationIds.contains(station.stationId);
+
+  Future<void> _toggleFavoriteStation(H2Station station) async {
+    final stationId = station.stationId;
+    final isFav = _favoriteStationIds.contains(stationId);
+
+    final url =
+    Uri.parse('$_backendBaseUrl/api/stations/$stationId/favorite');
+    debugPrint('➡️ 즐겨찾기 API 호출: $url (isFav=$isFav)');
+
+    // TODO: 실제 로그인 후 발급받은 토큰으로 교체해줘
+    const accessToken = 'YOUR_ACCESS_TOKEN_HERE';
+
+    try {
+      http.Response res;
+
+      if (!isFav) {
+        // ⭐ 즐겨찾기 추가 (POST)
+        res = await http.post(
+          url,
+          headers: {
+            if (accessToken.isNotEmpty) 'Authorization': 'Bearer $accessToken',
+          },
+        );
+
+        debugPrint(
+            '⬅️ POST 결과: ${res.statusCode} ${res.body.isEmpty ? '' : res.body}');
+
+        if (res.statusCode == 201 ||
+            res.statusCode == 200 ||
+            res.statusCode == 204) {
+          setState(() {
+            _favoriteStationIds.add(stationId);
+          });
+          debugPrint('✅ 즐겨찾기 추가 성공: $stationId');
+        } else {
+          debugPrint('❌ 즐겨찾기 추가 실패: ${res.statusCode} ${res.body}');
+        }
+      } else {
+        // ⭐ 즐겨찾기 해제 (DELETE)
+        res = await http.delete(
+          url,
+          headers: {
+            if (accessToken.isNotEmpty) 'Authorization': 'Bearer $accessToken',
+          },
+        );
+
+        debugPrint(
+            '⬅️ DELETE 결과: ${res.statusCode} ${res.body.isEmpty ? '' : res.body}');
+
+        if (res.statusCode == 204 || res.statusCode == 200) {
+          setState(() {
+            _favoriteStationIds.remove(stationId);
+          });
+          debugPrint('✅ 즐겨찾기 해제 성공: $stationId');
+        } else {
+          debugPrint('❌ 즐겨찾기 해제 실패: ${res.statusCode} ${res.body}');
+        }
+      }
+    } catch (e) {
+      debugPrint('❌ 즐겨찾기 토글 중 오류: $e');
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -43,13 +161,18 @@ class _MapScreenState extends State<MapScreen> {
                 initialCameraPosition: _initialCamera,
                 locationButtonEnable: true,
               ),
+
+              /// ⭐ 클러스터 옵션 추가 부분
               clusterOptions: NaverMapClusteringOptions(
+                // 어느 정도 화면 픽셀 거리 안에 모여있으면 하나로 뭉칠지 설정
                 mergeStrategy: const NClusterMergeStrategy(
                   willMergedScreenDistance: {
                     NaverMapClusteringOptions.defaultClusteringZoomRange: 35,
                   },
                 ),
+                // 실제 “N개”라고 표시되는 클러스터 마커 꾸미는 콜백
                 clusterMarkerBuilder: (info, clusterMarker) {
+                  // info.size == 이 클러스터 안에 포함된 마커 개수
                   clusterMarker.setIsFlat(true);
                   clusterMarker.setCaption(
                     NOverlayCaption(
@@ -62,6 +185,7 @@ class _MapScreenState extends State<MapScreen> {
               ),
               onMapReady: _handleMapReady,
             ),
+
             if (_isLoadingStations) _buildLoadingBanner(),
             if (_stationError != null) _buildErrorBanner(),
             if (!_isLoadingStations &&
@@ -110,8 +234,8 @@ class _MapScreenState extends State<MapScreen> {
             ),
             const SizedBox(width: 48),
             _NavItem(
-              icon: Icons.list_alt,
-              label: '목록',
+              icon: Icons.star_border, // ⭐ 목록 → 즐겨찾기
+              label: '즐겨찾기',
               selected: _selectedIndex == 2,
               onTap: () => _onTapItem(2),
             ),
@@ -271,12 +395,14 @@ class _MapScreenState extends State<MapScreen> {
 
     try {
       await controller.clearOverlays(type: NOverlayType.marker);
-    } catch (_) {}
+    } catch (_) {
+      // ignore controller clear errors
+    }
 
     if (_mappableStationCount == 0) return;
 
-    final overlays = _stationsWithCoordinates
-        .map((station) {
+    // ⭐ 여기서 NMarker → NClusterableMarker 로 변경
+    final overlays = _stationsWithCoordinates.map((station) {
       final lat = station.latitude!;
       final lng = station.longitude!;
       final markerId = 'h2_marker_${station.stationName}_$lat$lng';
@@ -297,16 +423,15 @@ class _MapScreenState extends State<MapScreen> {
         _showStationBottomSheet(station);
       });
       return marker;
-    })
-        .toSet();
+    }).toSet();
 
     if (overlays.isEmpty) return;
     await controller.addOverlayAll(overlays);
   }
 
-  Iterable<H2Station> get _stationsWithCoordinates =>
-      _stations.where((station) =>
-      station.latitude != null && station.longitude != null);
+  Iterable<H2Station> get _stationsWithCoordinates => _stations.where(
+        (station) => station.latitude != null && station.longitude != null,
+  );
 
   int get _mappableStationCount => _stationsWithCoordinates.length;
 
@@ -314,7 +439,7 @@ class _MapScreenState extends State<MapScreen> {
     final normalized = statusName.trim();
     switch (normalized) {
       case '영업중':
-        return Colors.blue; // 여기서 색 바꾸는 중
+        return Colors.green;
       case '점검중':
       case 'T/T교체':
         return Colors.orange;
@@ -332,36 +457,63 @@ class _MapScreenState extends State<MapScreen> {
       context: context,
       showDragHandle: true,
       builder: (context) {
-        return Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                station.stationName,
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.bold,
-                ),
+        // 바텀시트 안 전용 setState를 위한 StatefulBuilder
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            final isFav = _isFavoriteStation(station);
+
+            return Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: Text(
+                          station.stationName,
+                          style: Theme.of(context)
+                              .textTheme
+                              .titleMedium
+                              ?.copyWith(
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                      IconButton(
+                        icon: Icon(
+                          isFav ? Icons.star : Icons.star_border,
+                          color: isFav ? Colors.amber : Colors.grey,
+                        ),
+                        onPressed: () async {
+                          await _toggleFavoriteStation(station);
+                          setSheetState(() {}); // 별 상태 다시 그림
+                        },
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  _buildStationField('운영 상태', station.statusName),
+                  _buildStationField(
+                    '대기 차량',
+                    '${station.waitingCount ?? 0}대',
+                  ),
+                  _buildStationField(
+                    '최대 충전 가능',
+                    station.maxChargeCount != null
+                        ? '${station.maxChargeCount}대'
+                        : '정보 없음',
+                  ),
+                  _buildStationField(
+                    '최종 갱신',
+                    station.lastModifiedAt ?? '정보 없음',
+                  ),
+                ],
               ),
-              const SizedBox(height: 8),
-              _buildStationField('운영 상태', station.statusName),
-              _buildStationField(
-                '대기 차량',
-                '${station.waitingCount ?? 0}대',
-              ),
-              _buildStationField(
-                '최대 충전 가능',
-                station.maxChargeCount != null
-                    ? '${station.maxChargeCount}대'
-                    : '정보 없음',
-              ),
-              _buildStationField(
-                '최종 갱신',
-                station.lastModifiedAt ?? '정보 없음',
-              ),
-            ],
-          ),
+            );
+          },
         );
       },
     );
@@ -404,8 +556,11 @@ class _MapScreenState extends State<MapScreen> {
         );
         break;
       case 2:
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('목록 보기 준비 중입니다.')),
+      // ⭐ 즐겨찾기 페이지로 이동 (목록은 나중에 백엔드 GET으로 구성)
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) => const FavoritesPage(),
+          ),
         );
         break;
       case 3:
@@ -427,6 +582,7 @@ class _MapScreenState extends State<MapScreen> {
   }
 }
 
+/// 하단 네비 아이템(아이콘+텍스트)
 class _NavItem extends StatelessWidget {
   final IconData icon;
   final String label;

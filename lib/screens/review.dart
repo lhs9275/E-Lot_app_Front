@@ -5,7 +5,7 @@ import 'package:flutter/services.dart';
 void main() => runApp(const _ReviewApp(key: ValueKey('_reviewAppRoot')));
 
 class _ReviewApp extends StatelessWidget {
-  const _ReviewApp({super.key});
+  const _ReviewApp({super.key});  
   @override
   Widget build(BuildContext context) {
     return MaterialApp(

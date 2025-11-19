@@ -1,13 +1,16 @@
+// lib/models/h2_station.dart
 class H2Station {
-  final String stationName; // 충전소 이름
-  final String statusName; // 영업중 / 영업마감
-  final int? waitingCount; // 대기 차량 수 (nullable)
-  final int? maxChargeCount; // 최대 충전 가능 대수 (nullable)
+  final String stationId;      // ⭐ 즐겨찾기/백엔드용 고유 ID
+  final String stationName;    // 충전소 이름
+  final String statusName;     // 영업중 / 영업마감
+  final int? waitingCount;     // 대기 차량 수 (nullable)
+  final int? maxChargeCount;   // 최대 충전 가능 대수 (nullable)
   final String? lastModifiedAt; // 최종 갱신 시간
-  final double? latitude; // 위도 (H2 인포에서 제공)
-  final double? longitude; // 경도 (H2 인포에서 제공)
+  final double? latitude;      // 위도
+  final double? longitude;     // 경도
 
   H2Station({
+    required this.stationId,
     required this.stationName,
     required this.statusName,
     this.waitingCount,
@@ -22,6 +25,10 @@ class H2Station {
     final operation = _parseMap(json['operation']);
 
     return H2Station(
+
+      // 🔥 백엔드/H2 응답에서 필드명이 stationId라고 했으니까 그대로 사용
+      stationId: _stringOrFallback(json['stationId'], 'UNKNOWN_ID'),
+
       stationName: _stringOrFallback(
         json['stationName'],
         '이름 미상',
