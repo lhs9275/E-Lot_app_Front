@@ -9,10 +9,34 @@ import 'package:psp2_fn/screens/map.dart';
 
 
 class WelcomeScreen extends StatelessWidget {
-  const WelcomeScreen({super.key});
+  const WelcomeScreen({
+    super.key,
+    required this.isKakaoConfigured,
+    this.kakaoConfigError,
+  });
+
+  final bool isKakaoConfigured;
+  final String? kakaoConfigError;
+
+  void _showKakaoConfigError(BuildContext context) {
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          kakaoConfigError ??
+              '카카오 SDK 키가 없습니다. .env에 KAKAO_NATIVE_APP_KEY, KAKAO_JAVASCRIPT_APP_KEY를 채워주세요.',
+        ),
+      ),
+    );
+  }
 
   Future<void> _handleKakaoLogin(BuildContext context) async {
     try {
+      if (!isKakaoConfigured) {
+        _showKakaoConfigError(context);
+        return;
+      }
+
       // 1. 카카오 로그인 (카카오톡 우선, 실패 시 계정 로그인)
       OAuthToken kakaoToken;
       try {
@@ -156,16 +180,32 @@ class WelcomeScreen extends StatelessWidget {
                 ),
                 // 버튼 영역
                 SizedBox(
-                  child: Positioned(
-                    left: 0,
-                    top: 0, // 숫자 튜닝해서 내려주면 됨
+                  child: Align(
+                    alignment: Alignment.centerLeft,
                     child: SvgPicture.asset(
                       'lib/assets/icons/welcome_sc/cute_under_bar.svg',
                       width: 200,
                       height: 200,
                     ),
                   ),
-                ), //
+                ),
+                if (kakaoConfigError != null) ...[
+                  Container(
+                    margin: const EdgeInsets.only(bottom: 12),
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.orange.shade100,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      kakaoConfigError!,
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: Colors.orange.shade900,
+                        height: 1.3,
+                      ),
+                    ),
+                  ),
+                ],
                 SizedBox(
                   height: 60,
                   child: ElevatedButton(
@@ -177,7 +217,9 @@ class WelcomeScreen extends StatelessWidget {
                         borderRadius: BorderRadius.circular(16),
                       ),
                     ),
-                    onPressed: () => _handleKakaoLogin(context),
+                    onPressed: isKakaoConfigured
+                        ? () => _handleKakaoLogin(context)
+                        : () => _showKakaoConfigError(context),
                     child: Image.asset(
                       'lib/assets/icons/welcome_sc/kakao_login_medium_wide.png',
                       fit: BoxFit.cover,

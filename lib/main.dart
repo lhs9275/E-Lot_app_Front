@@ -7,31 +7,58 @@ import 'package:flutter_naver_map/flutter_naver_map.dart';
 import 'package:kakao_flutter_sdk_user/kakao_flutter_sdk_user.dart';
 import 'screens/welcom.dart';
 import 'services/h2_station_api_service.dart';
+import 'services/ev_station_api_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   // 1. .env 로드 (여기서 꼭 await!)
   await dotenv.load(fileName: ".env");
+  final kakaoNativeAppKey = dotenv.env['KAKAO_NATIVE_APP_KEY']?.trim();
+  final kakaoJavaScriptAppKey =
+      dotenv.env['KAKAO_JAVASCRIPT_APP_KEY']?.trim();
+
+  final missingKakaoKeys = <String>[];
+  if (kakaoNativeAppKey == null || kakaoNativeAppKey.isEmpty) {
+    missingKakaoKeys.add('KAKAO_NATIVE_APP_KEY');
+  }
+  if (kakaoJavaScriptAppKey == null || kakaoJavaScriptAppKey.isEmpty) {
+    missingKakaoKeys.add('KAKAO_JAVASCRIPT_APP_KEY');
+  }
+
+  final kakaoConfigError = missingKakaoKeys.isEmpty
+      ? null
+      : '카카오 SDK 키 누락: ${missingKakaoKeys.join(', ')} — 프로젝트 루트의 .env를 확인하세요.';
 
   // 2. 개발 환경에서만 자체 서명 인증서 허용
   _configureHttpOverrides();
 
   // 3. H2 API 서비스 구성 (환경 변수 없으면 기본값)
   configureH2StationApi(baseUrl: _resolveH2BaseUrl());
+  // EV API는 로컬 개발용 별도 베이스 URL 사용(.env에 EV_API_BASE_URL 설정)
+  configureEVStationApi(baseUrl: _resolveEvBaseUrl());
 
   // 4. 네이버 지도 SDK 초기화
   await _initializeNaverMap();
 
   // 5. 로드된 값으로 KakaoSdk 초기화
-  KakaoSdk.init(
-    nativeAppKey: dotenv.env['KAKAO_NATIVE_APP_KEY'] ?? '',
-    javaScriptAppKey: dotenv.env['KAKAO_JAVASCRIPT_APP_KEY'] ?? '',
-    // 또는 dotenv.get('KAKAO_NATIVE_APP_KEY') 써도 됨 (없으면 에러 던짐)
-  );
+  if (missingKakaoKeys.isEmpty) {
+    KakaoSdk.init(
+      nativeAppKey: kakaoNativeAppKey!,
+      javaScriptAppKey: kakaoJavaScriptAppKey!,
+      // 또는 dotenv.get('KAKAO_NATIVE_APP_KEY') 써도 됨 (없으면 에러 던짐)
+    );
+  } else {
+    debugPrint('[KakaoSdk] 초기화를 건너뜁니다: $kakaoConfigError');
+  }
 
   // 6. 앱 실행
-  runApp(const MyApp());
+  runApp(
+    MyApp(
+      isKakaoConfigured: missingKakaoKeys.isEmpty,
+      kakaoConfigError: kakaoConfigError,
+    ),
+  );
 }
 
 String _resolveH2BaseUrl() {
@@ -40,6 +67,19 @@ String _resolveH2BaseUrl() {
     const fallback = 'https://clos21.kr';
     debugPrint(
       '[H2 API] H2_API_BASE_URL가 설정되지 않아 기본값($fallback)을 사용합니다. 실제 서버 주소를 .env에 설정하세요.',
+    );
+    return fallback;
+  }
+  return value;
+}
+
+String _resolveEvBaseUrl() {
+  final value = dotenv.env['EV_API_BASE_URL']?.trim();
+  if (value == null || value.isEmpty) {
+    // 에뮬레이터/실기기에서 로컬호스트로 접속할 때 기본값(안드로이드는 10.0.2.2)
+    const fallback = 'http://10.0.2.2:8080';
+    debugPrint(
+      '[EV API] EV_API_BASE_URL가 설정되지 않아 기본값($fallback)을 사용합니다. 로컬 서버 주소를 .env에 설정하세요.',
     );
     return fallback;
   }
@@ -89,7 +129,14 @@ class _InsecureHttpOverrides extends HttpOverrides {
 }
 
 class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+  const MyApp({
+    super.key,
+    required this.isKakaoConfigured,
+    this.kakaoConfigError,
+  });
+
+  final bool isKakaoConfigured;
+  final String? kakaoConfigError;
 
   @override
   Widget build(BuildContext context) {
@@ -101,7 +148,10 @@ class MyApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF3B82F6)),
         useMaterial3: true,
       ),
-      home: const WelcomeScreen(),
+      home: WelcomeScreen(
+        isKakaoConfigured: isKakaoConfigured,
+        kakaoConfigError: kakaoConfigError,
+      ),
     );
   }
 }
