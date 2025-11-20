@@ -11,6 +11,7 @@ import '../models/ev_station.dart';
 import '../services/h2_station_api_service.dart';
 import '../services/ev_station_api_service.dart';
 import 'favorite.dart'; // ⭐ 즐겨찾기 페이지 연결
+import 'package:psp2_fn/auth/token_storage.dart'; // 🔑 JWT 저장소
 
 /// ✅ 이 파일 단독 실행용 엔트리 포인트
 Future<void> main() async {
@@ -85,7 +86,7 @@ class _MapScreenState extends State<MapScreen> {
   /// ⭐ 즐겨찾기 상태 (stationId 기준)
   final Set<String> _favoriteStationIds = {};
 
-  /// ⭐ H2 자동 새로고침 타이머 (EV 쪽은 건드리지 않음)
+  /// ⭐ H2만 15초마다 자동 새로고침용 타이머
   Timer? _h2AutoRefreshTimer;
 
   /// 현재 스테이션이 즐겨찾기인지 여부를 빠르게 확인한다.
@@ -101,8 +102,22 @@ class _MapScreenState extends State<MapScreen> {
     Uri.parse('$_backendBaseUrl/api/stations/$stationId/favorite');
     debugPrint('➡️ 즐겨찾기 API 호출: $url (isFav=$isFav)');
 
-    // TODO: 실제 로그인 후 발급받은 토큰으로 교체해줘
-    const accessToken = 'YOUR_ACCESS_TOKEN_HERE';
+    // 🔑 TokenStorage에서 accessToken 가져오기
+    final accessToken = await TokenStorage.getAccessToken();
+
+    // 토큰이 없으면 즐겨찾기 사용 불가
+    if (accessToken == null || accessToken.isEmpty) {
+      debugPrint('❌ 즐겨찾기 실패: 저장된 accessToken이 없습니다. 로그인 필요.');
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('로그인 후 즐겨찾기 기능을 사용할 수 있습니다.'),
+          ),
+        );
+      }
+      return;
+    }
 
     try {
       http.Response res;
@@ -112,12 +127,13 @@ class _MapScreenState extends State<MapScreen> {
         res = await http.post(
           url,
           headers: {
-            if (accessToken.isNotEmpty) 'Authorization': 'Bearer $accessToken',
+            'Authorization': 'Bearer $accessToken',
           },
         );
 
         debugPrint(
-            '⬅️ POST 결과: ${res.statusCode} ${res.body.isEmpty ? '' : res.body}');
+          '⬅️ POST 결과: ${res.statusCode} ${res.body.isEmpty ? '' : res.body}',
+        );
 
         if (res.statusCode == 201 ||
             res.statusCode == 200 ||
@@ -134,12 +150,13 @@ class _MapScreenState extends State<MapScreen> {
         res = await http.delete(
           url,
           headers: {
-            if (accessToken.isNotEmpty) 'Authorization': 'Bearer $accessToken',
+            'Authorization': 'Bearer $accessToken',
           },
         );
 
         debugPrint(
-            '⬅️ DELETE 결과: ${res.statusCode} ${res.body.isEmpty ? '' : res.body}');
+          '⬅️ DELETE 결과: ${res.statusCode} ${res.body.isEmpty ? '' : res.body}',
+        );
 
         if (res.statusCode == 204 || res.statusCode == 200) {
           setState(() {
@@ -159,10 +176,10 @@ class _MapScreenState extends State<MapScreen> {
   void initState() {
     super.initState();
     _loadAllStations();
-    _startH2AutoRefresh(); // ⭐ 15초마다 H2만 자동 갱신
+    _startH2AutoRefresh(); // ⭐ H2 15초 자동 갱신 시작
   }
 
-  /// ⭐ 15초마다 H2 충전소 상태 자동 갱신 (EV는 그대로 둠)
+  /// ⭐ H2 수소충전소만 15초마다 자동 갱신
   void _startH2AutoRefresh() {
     _h2AutoRefreshTimer?.cancel();
 
@@ -173,12 +190,8 @@ class _MapScreenState extends State<MapScreen> {
           timer.cancel();
           return;
         }
-        // 이미 H2 로딩 중이면 겹치지 않게 스킵
         if (_isLoadingH2Stations) return;
-
-        debugPrint('⏱️ [AUTO] H2 refresh tick: ${DateTime.now()}');
-
-        _loadH2Stations(); // EV쪽은 손대지 않고 H2만 새로 호출
+        _loadH2Stations(); // EV 쪽은 건드리지 않고, H2만 갱신
       },
     );
   }
@@ -422,17 +435,12 @@ class _MapScreenState extends State<MapScreen> {
   /// 수소 충전소 API를 호출하고 결과를 지도에 반영한다.
   Future<void> _loadH2Stations() async {
     try {
-      debugPrint('🌐 [H2] fetchStations() 호출: ${DateTime.now()}');
-
       final stations = await h2StationApi.fetchStations();
       if (!mounted) return;
       setState(() {
         _h2Stations = stations;
         _isLoadingH2Stations = false;
       });
-
-      debugPrint('✅ [H2] 불러온 충전소 개수: ${stations.length}');
-
       unawaited(_renderStationMarkers());
     } catch (error) {
       if (!mounted) return;
@@ -440,7 +448,7 @@ class _MapScreenState extends State<MapScreen> {
         _isLoadingH2Stations = false;
         _stationError ??= '수소 충전소 데이터를 불러오지 못했습니다.';
       });
-      debugPrint('❌ H2 station fetch failed: $error');
+      debugPrint('H2 station fetch failed: $error');
     }
   }
 
@@ -676,9 +684,9 @@ class _MapScreenState extends State<MapScreen> {
               _buildStationField(
                   '최근 갱신', station.statusUpdatedAt ?? '정보 없음'),
               _buildStationField(
-                  '주소',
-                  '${station.address ?? ''} ${station.addressDetail ?? ''}'
-                      .trim()),
+                '주소',
+                '${station.address ?? ''} ${station.addressDetail ?? ''}'.trim(),
+              ),
               _buildStationField(
                   '무료주차', station.parkingFree == true ? '예' : '아니요'),
               _buildStationField(
@@ -751,7 +759,7 @@ class _MapScreenState extends State<MapScreen> {
 
   @override
   void dispose() {
-    _h2AutoRefreshTimer?.cancel(); // ⭐ H2 자동 새로고침 정리
+    _h2AutoRefreshTimer?.cancel(); // ⭐ H2 자동 새로고침 타이머 정리
     _controller = null;
     super.dispose();
   }
