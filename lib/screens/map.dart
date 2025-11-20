@@ -167,7 +167,7 @@ class _MapScreenState extends State<MapScreen> {
                 // 어느 정도 화면 픽셀 거리 안에 모여있으면 하나로 뭉칠지 설정
                 mergeStrategy: const NClusterMergeStrategy(
                   willMergedScreenDistance: {
-                    NaverMapClusteringOptions.defaultClusteringZoomRange: 35,
+                    NaverMapClusteringOptions.defaultClusteringZoomRange: 60,
                   },
                 ),
                 // 실제 “N개”라고 표시되는 클러스터 마커 꾸미는 콜백
