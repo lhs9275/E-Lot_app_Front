@@ -251,7 +251,7 @@ class _EmptyState extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.only(bottom: 6),
             child: Text(
-              '즐겨 찾는 주차장이 없습니다',
+              '즐겨 찾기 목록이 비었습니다',
               style: txt.titleMedium?.copyWith(
                 fontSize: 18,
                 fontWeight: FontWeight.w700,
