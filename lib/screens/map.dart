@@ -75,7 +75,7 @@ class _MapScreenState extends State<MapScreen> {
   // 시작 위치 (예: 서울시청)
   final NLatLng _initialTarget = const NLatLng(37.5666, 126.9790);
   late final NCameraPosition _initialCamera =
-      NCameraPosition(target: _initialTarget, zoom: 8.5);
+  NCameraPosition(target: _initialTarget, zoom: 8.5);
 
   int _selectedIndex = 0;
 
@@ -84,6 +84,9 @@ class _MapScreenState extends State<MapScreen> {
 
   /// ⭐ 즐겨찾기 상태 (stationId 기준)
   final Set<String> _favoriteStationIds = {};
+
+  /// ⭐ H2 자동 새로고침 타이머 (EV 쪽은 건드리지 않음)
+  Timer? _h2AutoRefreshTimer;
 
   /// 현재 스테이션이 즐겨찾기인지 여부를 빠르게 확인한다.
   bool _isFavoriteStation(H2Station station) =>
@@ -156,6 +159,28 @@ class _MapScreenState extends State<MapScreen> {
   void initState() {
     super.initState();
     _loadAllStations();
+    _startH2AutoRefresh(); // ⭐ 15초마다 H2만 자동 갱신
+  }
+
+  /// ⭐ 15초마다 H2 충전소 상태 자동 갱신 (EV는 그대로 둠)
+  void _startH2AutoRefresh() {
+    _h2AutoRefreshTimer?.cancel();
+
+    _h2AutoRefreshTimer = Timer.periodic(
+      const Duration(seconds: 15),
+          (timer) {
+        if (!mounted) {
+          timer.cancel();
+          return;
+        }
+        // 이미 H2 로딩 중이면 겹치지 않게 스킵
+        if (_isLoadingH2Stations) return;
+
+        debugPrint('⏱️ [AUTO] H2 refresh tick: ${DateTime.now()}');
+
+        _loadH2Stations(); // EV쪽은 손대지 않고 H2만 새로 호출
+      },
+    );
   }
 
   @override
@@ -397,12 +422,17 @@ class _MapScreenState extends State<MapScreen> {
   /// 수소 충전소 API를 호출하고 결과를 지도에 반영한다.
   Future<void> _loadH2Stations() async {
     try {
+      debugPrint('🌐 [H2] fetchStations() 호출: ${DateTime.now()}');
+
       final stations = await h2StationApi.fetchStations();
       if (!mounted) return;
       setState(() {
         _h2Stations = stations;
         _isLoadingH2Stations = false;
       });
+
+      debugPrint('✅ [H2] 불러온 충전소 개수: ${stations.length}');
+
       unawaited(_renderStationMarkers());
     } catch (error) {
       if (!mounted) return;
@@ -410,7 +440,7 @@ class _MapScreenState extends State<MapScreen> {
         _isLoadingH2Stations = false;
         _stationError ??= '수소 충전소 데이터를 불러오지 못했습니다.';
       });
-      debugPrint('H2 station fetch failed: $error');
+      debugPrint('❌ H2 station fetch failed: $error');
     }
   }
 
@@ -500,12 +530,12 @@ class _MapScreenState extends State<MapScreen> {
 
   Iterable<H2Station> get _h2StationsWithCoordinates =>
       _h2Stations.where(
-        (station) => station.latitude != null && station.longitude != null,
+            (station) => station.latitude != null && station.longitude != null,
       );
 
   Iterable<EVStation> get _evStationsWithCoordinates =>
       _evStations.where(
-        (station) => station.latitude != null && station.longitude != null,
+            (station) => station.latitude != null && station.longitude != null,
       );
 
   int get _totalMappableStationCount =>
@@ -636,12 +666,23 @@ class _MapScreenState extends State<MapScreen> {
                 ),
               ),
               const SizedBox(height: 8),
-              _buildStationField('상태', '${station.statusLabel} (${station.status})'),
-              _buildStationField('출력', station.outputKw != null ? '${station.outputKw} kW' : '정보 없음'),
-              _buildStationField('최근 갱신', station.statusUpdatedAt ?? '정보 없음'),
-              _buildStationField('주소', '${station.address ?? ''} ${station.addressDetail ?? ''}'.trim()),
-              _buildStationField('무료주차', station.parkingFree == true ? '예' : '아니요'),
-              _buildStationField('층/구역', '${station.floor ?? '-'} / ${station.floorType ?? '-'}'),
+              _buildStationField(
+                  '상태', '${station.statusLabel} (${station.status})'),
+              _buildStationField(
+                  '출력',
+                  station.outputKw != null
+                      ? '${station.outputKw} kW'
+                      : '정보 없음'),
+              _buildStationField(
+                  '최근 갱신', station.statusUpdatedAt ?? '정보 없음'),
+              _buildStationField(
+                  '주소',
+                  '${station.address ?? ''} ${station.addressDetail ?? ''}'
+                      .trim()),
+              _buildStationField(
+                  '무료주차', station.parkingFree == true ? '예' : '아니요'),
+              _buildStationField(
+                  '층/구역', '${station.floor ?? '-'} / ${station.floorType ?? '-'}'),
             ],
           ),
         );
@@ -710,6 +751,7 @@ class _MapScreenState extends State<MapScreen> {
 
   @override
   void dispose() {
+    _h2AutoRefreshTimer?.cancel(); // ⭐ H2 자동 새로고침 정리
     _controller = null;
     super.dispose();
   }
