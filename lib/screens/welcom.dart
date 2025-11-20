@@ -1,6 +1,5 @@
 import 'dart:convert';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:http/http.dart' as http;
@@ -10,30 +9,49 @@ import 'package:psp2_fn/screens/map.dart';
 
 
 class WelcomeScreen extends StatelessWidget {
-  const WelcomeScreen({super.key});
+  const WelcomeScreen({
+    super.key,
+    required this.isKakaoConfigured,
+    this.kakaoConfigError,
+  });
+
+  final bool isKakaoConfigured;
+  final String? kakaoConfigError;
+
+  void _showKakaoConfigError(BuildContext context) {
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          kakaoConfigError ??
+              '카카오 SDK 키가 없습니다. .env에 KAKAO_NATIVE_APP_KEY, KAKAO_JAVASCRIPT_APP_KEY를 채워주세요.',
+        ),
+      ),
+    );
+  }
 
   Future<void> _handleKakaoLogin(BuildContext context) async {
-    debugPrint('카카오 로그인 시작');
     try {
-      // 1. 카카??로그??(카카?�톡 ?�선, ?�패 ??계정 로그??
+      if (!isKakaoConfigured) {
+        _showKakaoConfigError(context);
+        return;
+      }
+
+      // 1. 카카오 로그인 (카카오톡 우선, 실패 시 계정 로그인)
       OAuthToken kakaoToken;
       try {
-        debugPrint('loginWithKakaoTalk 시도');
         kakaoToken = await UserApi.instance.loginWithKakaoTalk();
       } catch (_) {
-        debugPrint('카카오톡 로그인 실패, 계정 로그인 시도');
         kakaoToken = await UserApi.instance.loginWithKakaoAccount();
       }
 
-      debugPrint('백엔드 요청 전송');
-      // 2. Clos21 백엔?�로 카카??accessToken ?�달
+      // 2. Clos21 백엔드로 카카오 accessToken 전달
       final response = await http.post(
         Uri.parse('https://clos21.kr/mapi/auth/kakao'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({'kakaoAccessToken': kakaoToken.accessToken}),
       );
 
-      debugPrint('백엔드 응답: ${response.statusCode} / ${response.body}');
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
 
@@ -43,7 +61,7 @@ class WelcomeScreen extends StatelessWidget {
         if (accessToken == null || refreshToken == null) {
           if (!context.mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('?�버 ?�답???�큰 ?�보가 ?�습?�다.')),
+            const SnackBar(content: Text('서버 응답에 토큰 정보가 없습니다.')),
           );
           return;
         }
@@ -55,28 +73,26 @@ class WelcomeScreen extends StatelessWidget {
 
         if (!context.mounted) return;
 
-        // 로그???�공 ?????�면?�로 ?�동
+        // 로그인 성공 → 홈 화면으로 이동
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(builder: (_) => const MapScreen()),
         );
       } else {
-        debugPrint('로그인 실패 상태 코드: ${response.statusCode}');
         if (!context.mounted) return;
-        // ?�버 ?�러 메시지 출력
+        // 서버 에러 메시지 출력
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              '로그???�패 (${response.statusCode}): ${response.body}',
+              '로그인 실패 (${response.statusCode}): ${response.body}',
             ),
           ),
         );
       }
     } catch (e) {
-      debugPrint('카카오 로그인 예외: $e');
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('카카??로그??�??�류: $e')),
+          SnackBar(content: Text('카카오 로그인 중 오류: $e')),
         );
       }
     }
@@ -93,8 +109,8 @@ class WelcomeScreen extends StatelessWidget {
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
             colors: [
-              Color.fromRGBO(255, 255, 255, 1.0), // ?��???
-              Color.fromRGBO(255, 255, 255, 1.0), // 조금 ??진한 ?��???
+              Color.fromRGBO(255, 255, 255, 1.0), // 파란색
+              Color.fromRGBO(255, 255, 255, 1.0), // 조금 더 진한 파란색
             ],
           ),
         ),
@@ -105,14 +121,14 @@ class WelcomeScreen extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 SizedBox(
-                  height: 0, // ?�쪽 ?�역 ?�이
+                  height: 0, // 위쪽 영역 높이
                   child: Stack(
-                    clipBehavior: Clip.none, // ?�짝 ?�면 밖으�??��???괜찮�?
+                    clipBehavior: Clip.none, // 살짝 화면 밖으로 나가도 괜찮게
                     children: [
-                      // ?�쪽 ?�치 ?�이�?
+                      // 왼쪽 위치 아이콘
                       Positioned(
                         left: 0,
-                        top: 80, // ?�자 ?�닝?�서 ?�려주면 ??
+                        top: 80, // 숫자 튜닝해서 내려주면 됨
                         child: SvgPicture.asset(
                           'lib/assets/icons/welcome_sc/location_icon.svg',
                           width: 200,
@@ -120,9 +136,9 @@ class WelcomeScreen extends StatelessWidget {
                         ),
                       ),
 
-                      // ?�른�???초록 블러
+                      // 오른쪽 위 초록 블러
                       Positioned(
-                        right: -100, // ?�짝 밖으�??��?�?
+                        right: -100, // 살짝 밖으로 나가게
                         top: -100,
                         child: Image.asset(
                           'lib/assets/icons/welcome_sc/blusher_green.png',
@@ -131,7 +147,7 @@ class WelcomeScreen extends StatelessWidget {
                         ),
                       ),
 
-                      // ?�쪽 ?�래 ?��? 블러
+                      // 왼쪽 아래 파란 블러
                       Positioned(
                         left: -120,
                         bottom: -560,
@@ -147,7 +163,7 @@ class WelcomeScreen extends StatelessWidget {
                 const Spacer(),
                 const Spacer(),
                 Text(
-                  '?�상??E-Lot�??�다',
+                  '세상을 E-Lot게 하다',
                   style: theme.textTheme.displaySmall?.copyWith(
                     color: Colors.black,
                     fontWeight: FontWeight.bold,
@@ -162,7 +178,7 @@ class WelcomeScreen extends StatelessWidget {
                     height: 1.4,
                   ),
                 ),
-                // 버튼 ?�역
+                // 버튼 영역
                 SizedBox(
                   child: Align(
                     alignment: Alignment.centerLeft,
@@ -173,6 +189,23 @@ class WelcomeScreen extends StatelessWidget {
                     ),
                   ),
                 ),
+                if (kakaoConfigError != null) ...[
+                  Container(
+                    margin: const EdgeInsets.only(bottom: 12),
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.orange.shade100,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      kakaoConfigError!,
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: Colors.orange.shade900,
+                        height: 1.3,
+                      ),
+                    ),
+                  ),
+                ],
                 SizedBox(
                   height: 60,
                   child: ElevatedButton(
@@ -184,7 +217,9 @@ class WelcomeScreen extends StatelessWidget {
                         borderRadius: BorderRadius.circular(16),
                       ),
                     ),
-                    onPressed: () => _handleKakaoLogin(context),
+                    onPressed: isKakaoConfigured
+                        ? () => _handleKakaoLogin(context)
+                        : () => _showKakaoConfigError(context),
                     child: Image.asset(
                       'lib/assets/icons/welcome_sc/kakao_login_medium_wide.png',
                       fit: BoxFit.cover,
@@ -199,4 +234,3 @@ class WelcomeScreen extends StatelessWidget {
     );
   }
 }
-
