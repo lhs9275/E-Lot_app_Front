@@ -10,8 +10,10 @@ import '../models/h2_station.dart';
 import '../models/ev_station.dart';
 import '../services/h2_station_api_service.dart';
 import '../services/ev_station_api_service.dart';
+
 import 'favorite.dart'; // ⭐ 즐겨찾기 페이지 연결
 import 'package:psp2_fn/auth/token_storage.dart'; // 🔑 JWT 저장소
+import 'bottom_navbar.dart'; // ✅ 분리한 하단 네비게이션 바
 
 /// ✅ 이 파일 단독 실행용 엔트리 포인트
 Future<void> main() async {
@@ -66,6 +68,7 @@ class MapScreen extends StatefulWidget {
 
 /// 지도 상호작용, 충전소 호출 및 즐겨찾기를 모두 관리하는 상태 객체.
 class _MapScreenState extends State<MapScreen> {
+  // --- 상태 필드들 ---
   NaverMapController? _controller;
   List<H2Station> _h2Stations = [];
   List<EVStation> _evStations = [];
@@ -89,89 +92,21 @@ class _MapScreenState extends State<MapScreen> {
   /// ⭐ H2만 15초마다 자동 새로고침용 타이머
   Timer? _h2AutoRefreshTimer;
 
-  /// 현재 스테이션이 즐겨찾기인지 여부를 빠르게 확인한다.
-  bool _isFavoriteStation(H2Station station) =>
-      _favoriteStationIds.contains(station.stationId);
+  // --- 계산용 getter 들 ---
+  Iterable<H2Station> get _h2StationsWithCoordinates => _h2Stations.where(
+        (station) => station.latitude != null && station.longitude != null,
+  );
 
-  /// 백엔드 즐겨찾기 API를 호출해 서버와 상태를 동기화한다.
-  Future<void> _toggleFavoriteStation(H2Station station) async {
-    final stationId = station.stationId;
-    final isFav = _favoriteStationIds.contains(stationId);
+  Iterable<EVStation> get _evStationsWithCoordinates => _evStations.where(
+        (station) => station.latitude != null && station.longitude != null,
+  );
 
-    final url =
-    Uri.parse('$_backendBaseUrl/api/stations/$stationId/favorite');
-    debugPrint('➡️ 즐겨찾기 API 호출: $url (isFav=$isFav)');
+  int get _totalMappableStationCount =>
+      _h2StationsWithCoordinates.length + _evStationsWithCoordinates.length;
 
-    // 🔑 TokenStorage에서 accessToken 가져오기
-    final accessToken = await TokenStorage.getAccessToken();
+  bool get _isInitialLoading => _isLoadingH2Stations || _isLoadingEvStations;
 
-    // 토큰이 없으면 즐겨찾기 사용 불가
-    if (accessToken == null || accessToken.isEmpty) {
-      debugPrint('❌ 즐겨찾기 실패: 저장된 accessToken이 없습니다. 로그인 필요.');
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('로그인 후 즐겨찾기 기능을 사용할 수 있습니다.'),
-          ),
-        );
-      }
-      return;
-    }
-
-    try {
-      http.Response res;
-
-      if (!isFav) {
-        // ⭐ 즐겨찾기 추가 (POST)
-        res = await http.post(
-          url,
-          headers: {
-            'Authorization': 'Bearer $accessToken',
-          },
-        );
-
-        debugPrint(
-          '⬅️ POST 결과: ${res.statusCode} ${res.body.isEmpty ? '' : res.body}',
-        );
-
-        if (res.statusCode == 201 ||
-            res.statusCode == 200 ||
-            res.statusCode == 204) {
-          setState(() {
-            _favoriteStationIds.add(stationId);
-          });
-          debugPrint('✅ 즐겨찾기 추가 성공: $stationId');
-        } else {
-          debugPrint('❌ 즐겨찾기 추가 실패: ${res.statusCode} ${res.body}');
-        }
-      } else {
-        // ⭐ 즐겨찾기 해제 (DELETE)
-        res = await http.delete(
-          url,
-          headers: {
-            'Authorization': 'Bearer $accessToken',
-          },
-        );
-
-        debugPrint(
-          '⬅️ DELETE 결과: ${res.statusCode} ${res.body.isEmpty ? '' : res.body}',
-        );
-
-        if (res.statusCode == 204 || res.statusCode == 200) {
-          setState(() {
-            _favoriteStationIds.remove(stationId);
-          });
-          debugPrint('✅ 즐겨찾기 해제 성공: $stationId');
-        } else {
-          debugPrint('❌ 즐겨찾기 해제 실패: ${res.statusCode} ${res.body}');
-        }
-      }
-    } catch (e) {
-      debugPrint('❌ 즐겨찾기 토글 중 오류: $e');
-    }
-  }
-
+  // --- 라이프사이클 ---
   @override
   void initState() {
     super.initState();
@@ -196,6 +131,14 @@ class _MapScreenState extends State<MapScreen> {
     );
   }
 
+  @override
+  void dispose() {
+    _h2AutoRefreshTimer?.cancel(); // ⭐ H2 자동 새로고침 타이머 정리
+    _controller = null;
+    super.dispose();
+  }
+
+  // --- build & UI 구성 ---
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -258,40 +201,11 @@ class _MapScreenState extends State<MapScreen> {
             : const Icon(Icons.refresh),
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
-      bottomNavigationBar: BottomAppBar(
-        shape: const CircularNotchedRectangle(),
-        notchMargin: 8,
-        height: 64,
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceAround,
-          children: [
-            _NavItem(
-              icon: Icons.home_filled,
-              label: '홈',
-              selected: _selectedIndex == 0,
-              onTap: () => _onTapItem(0),
-            ),
-            _NavItem(
-              icon: Icons.place_outlined,
-              label: '근처',
-              selected: _selectedIndex == 1,
-              onTap: () => _onTapItem(1),
-            ),
-            const SizedBox(width: 48),
-            _NavItem(
-              icon: Icons.star_border, // ⭐ 목록 → 즐겨찾기
-              label: '즐겨찾기',
-              selected: _selectedIndex == 2,
-              onTap: () => _onTapItem(2),
-            ),
-            _NavItem(
-              icon: Icons.person_outline,
-              label: '내 정보',
-              selected: _selectedIndex == 3,
-              onTap: () => _onTapItem(3),
-            ),
-          ],
-        ),
+
+      /// ✅ 하단 네비게이션 바를 분리한 MainBottomNavBar 사용
+      bottomNavigationBar: MainBottomNavBar(
+        selectedIndex: _selectedIndex,
+        onTapItem: _onTapItem,
       ),
     );
   }
@@ -409,67 +323,32 @@ class _MapScreenState extends State<MapScreen> {
     );
   }
 
+  /// 공통 필드 UI를 구성해 코드 중복을 줄인다.
+  Widget _buildStationField(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          Text(
+            '$label: ',
+            style: const TextStyle(fontWeight: FontWeight.w600),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: const TextStyle(color: Colors.black87),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // --- 지도 / 마커 관련 ---
   /// 지도 준비 완료 후 컨트롤러를 보관하고 첫 렌더링을 수행한다.
   void _handleMapReady(NaverMapController controller) {
     _controller = controller;
     unawaited(_renderStationMarkers());
-  }
-
-  /// 수소/전기 충전소를 동시에 불러오고 로딩 및 오류 상태를 초기화한다.
-  Future<void> _loadAllStations() async {
-    setState(() {
-      _isLoadingH2Stations = true;
-      _isLoadingEvStations = true;
-      _stationError = null;
-    });
-    await Future.wait([
-      _loadH2Stations(),
-      _loadEvStations(),
-    ]);
-  }
-
-  Future<void> _loadStations() async {
-    await _loadAllStations();
-  }
-
-  /// 수소 충전소 API를 호출하고 결과를 지도에 반영한다.
-  Future<void> _loadH2Stations() async {
-    try {
-      final stations = await h2StationApi.fetchStations();
-      if (!mounted) return;
-      setState(() {
-        _h2Stations = stations;
-        _isLoadingH2Stations = false;
-      });
-      unawaited(_renderStationMarkers());
-    } catch (error) {
-      if (!mounted) return;
-      setState(() {
-        _isLoadingH2Stations = false;
-        _stationError ??= '수소 충전소 데이터를 불러오지 못했습니다.';
-      });
-      debugPrint('H2 station fetch failed: $error');
-    }
-  }
-
-  /// 전기 충전소 API를 호출하고 지도에 반영한다.
-  Future<void> _loadEvStations() async {
-    try {
-      final stations = await evStationApi.fetchStations();
-      if (!mounted) return;
-      setState(() {
-        _evStations = stations;
-        _isLoadingEvStations = false;
-      });
-      unawaited(_renderStationMarkers());
-    } catch (error) {
-      if (!mounted) return;
-      setState(() {
-        _isLoadingEvStations = false;
-        _stationError ??= '전기 충전소 데이터를 불러오지 못했습니다.';
-      });
-      debugPrint('EV station fetch failed: $error');
-    }
   }
 
   /// 지도에 표시할 모든 마커를 다시 생성하고 등록한다.
@@ -536,21 +415,65 @@ class _MapScreenState extends State<MapScreen> {
     return marker;
   }
 
-  Iterable<H2Station> get _h2StationsWithCoordinates =>
-      _h2Stations.where(
-            (station) => station.latitude != null && station.longitude != null,
-      );
+  // --- 데이터 로딩 ---
+  /// 수소/전기 충전소를 동시에 불러오고 로딩 및 오류 상태를 초기화한다.
+  Future<void> _loadAllStations() async {
+    setState(() {
+      _isLoadingH2Stations = true;
+      _isLoadingEvStations = true;
+      _stationError = null;
+    });
+    await Future.wait([
+      _loadH2Stations(),
+      _loadEvStations(),
+    ]);
+  }
 
-  Iterable<EVStation> get _evStationsWithCoordinates =>
-      _evStations.where(
-            (station) => station.latitude != null && station.longitude != null,
-      );
+  Future<void> _loadStations() async {
+    await _loadAllStations();
+  }
 
-  int get _totalMappableStationCount =>
-      _h2StationsWithCoordinates.length + _evStationsWithCoordinates.length;
+  /// 수소 충전소 API를 호출하고 결과를 지도에 반영한다.
+  Future<void> _loadH2Stations() async {
+    try {
+      final stations = await h2StationApi.fetchStations();
+      if (!mounted) return;
+      setState(() {
+        _h2Stations = stations;
+        _isLoadingH2Stations = false;
+      });
+      unawaited(_renderStationMarkers());
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _isLoadingH2Stations = false;
+        _stationError ??= '수소 충전소 데이터를 불러오지 못했습니다.';
+      });
+      debugPrint('H2 station fetch failed: $error');
+    }
+  }
 
-  bool get _isInitialLoading => _isLoadingH2Stations || _isLoadingEvStations;
+  /// 전기 충전소 API를 호출하고 지도에 반영한다.
+  Future<void> _loadEvStations() async {
+    try {
+      final stations = await evStationApi.fetchStations();
+      if (!mounted) return;
+      setState(() {
+        _evStations = stations;
+        _isLoadingEvStations = false;
+      });
+      unawaited(_renderStationMarkers());
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _isLoadingEvStations = false;
+        _stationError ??= '전기 충전소 데이터를 불러오지 못했습니다.';
+      });
+      debugPrint('EV station fetch failed: $error');
+    }
+  }
 
+  // --- 상태 색상 매핑 ---
   /// 수소 충전소 운영 상태 텍스트를 컬러로 매핑한다.
   Color _h2StatusColor(String statusName) {
     final normalized = statusName.trim();
@@ -583,6 +506,7 @@ class _MapScreenState extends State<MapScreen> {
     }
   }
 
+  // --- 바텀 시트 ---
   /// 수소 충전소 아이콘을 탭했을 때 상세 정보를 보여주는 바텀 시트.
   void _showH2StationBottomSheet(H2Station station) {
     if (!mounted) return;
@@ -608,10 +532,8 @@ class _MapScreenState extends State<MapScreen> {
                       Expanded(
                         child: Text(
                           station.stationName,
-                          style: Theme.of(context)
-                              .textTheme
-                              .titleMedium
-                              ?.copyWith(
+                          style:
+                          Theme.of(context).textTheme.titleMedium?.copyWith(
                             fontWeight: FontWeight.bold,
                           ),
                         ),
@@ -690,7 +612,8 @@ class _MapScreenState extends State<MapScreen> {
               _buildStationField(
                   '무료주차', station.parkingFree == true ? '예' : '아니요'),
               _buildStationField(
-                  '층/구역', '${station.floor ?? '-'} / ${station.floorType ?? '-'}'),
+                  '층/구역',
+                  '${station.floor ?? '-'} / ${station.floorType ?? '-'}'),
             ],
           ),
         );
@@ -698,27 +621,91 @@ class _MapScreenState extends State<MapScreen> {
     );
   }
 
-  /// 공통 필드 UI를 구성해 코드 중복을 줄인다.
-  Widget _buildStationField(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        children: [
-          Text(
-            '$label: ',
-            style: const TextStyle(fontWeight: FontWeight.w600),
+  // --- 즐겨찾기 관련 ---
+  /// 현재 스테이션이 즐겨찾기인지 여부를 빠르게 확인한다.
+  bool _isFavoriteStation(H2Station station) =>
+      _favoriteStationIds.contains(station.stationId);
+
+  /// 백엔드 즐겨찾기 API를 호출해 서버와 상태를 동기화한다.
+  Future<void> _toggleFavoriteStation(H2Station station) async {
+    final stationId = station.stationId;
+    final isFav = _favoriteStationIds.contains(stationId);
+
+    final url =
+    Uri.parse('$_backendBaseUrl/api/stations/$stationId/favorite');
+    debugPrint('➡️ 즐겨찾기 API 호출: $url (isFav=$isFav)');
+
+    // 🔑 TokenStorage에서 accessToken 가져오기
+    final accessToken = await TokenStorage.getAccessToken();
+
+    // 토큰이 없으면 즐겨찾기 사용 불가
+    if (accessToken == null || accessToken.isEmpty) {
+      debugPrint('❌ 즐겨찾기 실패: 저장된 accessToken이 없습니다. 로그인 필요.');
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('로그인 후 즐겨찾기 기능을 사용할 수 있습니다.'),
           ),
-          Expanded(
-            child: Text(
-              value,
-              style: const TextStyle(color: Colors.black87),
-            ),
-          ),
-        ],
-      ),
-    );
+        );
+      }
+      return;
+    }
+
+    try {
+      http.Response res;
+
+      if (!isFav) {
+        // ⭐ 즐겨찾기 추가 (POST)
+        res = await http.post(
+          url,
+          headers: {
+            'Authorization': 'Bearer $accessToken',
+          },
+        );
+
+        debugPrint(
+          '⬅️ POST 결과: ${res.statusCode} ${res.body.isEmpty ? '' : res.body}',
+        );
+
+        if (res.statusCode == 201 ||
+            res.statusCode == 200 ||
+            res.statusCode == 204) {
+          setState(() {
+            _favoriteStationIds.add(stationId);
+          });
+          debugPrint('✅ 즐겨찾기 추가 성공: $stationId');
+        } else {
+          debugPrint('❌ 즐겨찾기 추가 실패: ${res.statusCode} ${res.body}');
+        }
+      } else {
+        // ⭐ 즐겨찾기 해제 (DELETE)
+        res = await http.delete(
+          url,
+          headers: {
+            'Authorization': 'Bearer $accessToken',
+          },
+        );
+
+        debugPrint(
+          '⬅️ DELETE 결과: ${res.statusCode} ${res.body.isEmpty ? '' : res.body}',
+        );
+
+        if (res.statusCode == 204 || res.statusCode == 200) {
+          setState(() {
+            _favoriteStationIds.remove(stationId);
+          });
+          debugPrint('✅ 즐겨찾기 해제 성공: $stationId');
+        } else {
+          debugPrint('❌ 즐겨찾기 해제 실패: ${res.statusCode} ${res.body}');
+        }
+      }
+    } catch (e) {
+      debugPrint('❌ 즐겨찾기 토글 중 오류: $e');
+    }
   }
 
+  // --- 네비게이션 & FAB ---
   /// 하단 네비게이션 버튼 클릭을 처리한다.
   void _onTapItem(int idx) {
     setState(() => _selectedIndex = idx);
@@ -755,55 +742,5 @@ class _MapScreenState extends State<MapScreen> {
   /// 새로고침 FAB - 서버 상태를 다시 요청한다.
   void _onCenterButtonPressed() {
     _loadAllStations();
-  }
-
-  @override
-  void dispose() {
-    _h2AutoRefreshTimer?.cancel(); // ⭐ H2 자동 새로고침 타이머 정리
-    _controller = null;
-    super.dispose();
-  }
-}
-
-/// 하단 네비 아이템(아이콘+텍스트)
-class _NavItem extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-
-  const _NavItem({
-    required this.icon,
-    required this.label,
-    required this.selected,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final color = selected ? const Color(0xFF2563EB) : Colors.grey[600];
-    return InkWell(
-      borderRadius: BorderRadius.circular(12),
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 8),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, size: 24, color: color),
-            const SizedBox(height: 4),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 11,
-                height: 1.0,
-                color: color,
-                fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
   }
 }
