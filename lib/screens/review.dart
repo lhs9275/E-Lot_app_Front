@@ -1,11 +1,24 @@
 // lib/screens/review.dart
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:http/http.dart' as http;
+import 'package:psp2_fn/auth/token_storage.dart';
 
-void main() => runApp(const _ReviewApp(key: ValueKey('_reviewAppRoot')));
+/// ✅ 단독 실행 테스트용 엔트리 포인트
+/// 실제 앱에 통합할 때는 이 main()은 제거하고 ReviewPage만 사용하세요.
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await dotenv.load(fileName: '.env');
+
+  runApp(const _ReviewApp(key: ValueKey('_reviewAppRoot')));
+}
 
 class _ReviewApp extends StatelessWidget {
-  const _ReviewApp({super.key});  
+  const _ReviewApp({super.key});
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
@@ -16,13 +29,33 @@ class _ReviewApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF3B82F6)),
         fontFamily: 'Pretendard', // 없으면 시스템 폰트 사용
       ),
-      home: const ReviewPage(),
+      home: const ReviewPage(
+        stationId: 'DEMO_STATION_ID',
+        placeName: 'OOOOOO 주차장',
+        imageUrl:
+        'https://images.unsplash.com/photo-1483721310020-03333e577078?q=80&w=800&auto=format&fit=crop',
+      ),
     );
   }
 }
 
 class ReviewPage extends StatefulWidget {
-  const ReviewPage({super.key});
+  /// ✅ 백엔드에 넘길 충전소/주차장 ID
+  final String stationId;
+
+  /// 상단 카드에 보여줄 장소 이름
+  final String placeName;
+
+  /// 썸네일 이미지 URL
+  final String imageUrl;
+
+  const ReviewPage({
+    super.key,
+    required this.stationId,
+    required this.placeName,
+    required this.imageUrl,
+  });
+
   @override
   State<ReviewPage> createState() => _ReviewPageState();
 }
@@ -30,12 +63,9 @@ class ReviewPage extends StatefulWidget {
 class _ReviewPageState extends State<ReviewPage> {
   int _rating = 1;
   final TextEditingController _controller = TextEditingController();
-
-  final String _placeName = 'OOOOOO 주차장';
-  final String _imageUrl =
-      'https://images.unsplash.com/photo-1483721310020-03333e577078?q=80&w=800&auto=format&fit=crop';
-
   static const int _maxLen = 300;
+
+  bool _submitting = false;
 
   @override
   void dispose() {
@@ -43,22 +73,66 @@ class _ReviewPageState extends State<ReviewPage> {
     super.dispose();
   }
 
-  void _submit() {
-    final payload = {
-      'rating': _rating,
-      'content': _controller.text.trim(),
-      'place': _placeName,
-    };
-    debugPrint('리뷰 전송: $payload');
+  Future<void> _submit() async {
+    final content = _controller.text.trim();
+    if (content.isEmpty || _submitting) return;
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('리뷰가 등록되었습니다.')),
-    );
+    final baseUrl =
+        dotenv.env['BACKEND_BASE_URL'] ?? 'https://clos21.kr'; // fallback
+    final uri =
+    Uri.parse('$baseUrl/api/stations/${widget.stationId}/reviews');
 
-    setState(() {
-      _rating = 1;
-      _controller.clear();
-    });
+    setState(() => _submitting = true);
+
+    try {
+      final token = await TokenStorage.getAccessToken();
+      final headers = <String, String>{
+        'Content-Type': 'application/json',
+        if (token != null) 'Authorization': 'Bearer $token',
+      };
+
+      final body = jsonEncode({
+        'rating': _rating,
+        'content': content,
+      });
+
+      debugPrint('리뷰 전송: POST $uri body=$body');
+
+      final res = await http.post(uri, headers: headers, body: body);
+
+      if (!mounted) return;
+
+      if (res.statusCode == 201) {
+        debugPrint('리뷰 생성 성공: ${res.body}');
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('리뷰가 등록되었습니다.')),
+        );
+
+        setState(() {
+          _rating = 1;
+          _controller.clear();
+        });
+
+        // 필요하면: Navigator.pop(context, true);
+      } else {
+        debugPrint('리뷰 생성 실패: [${res.statusCode}] ${res.body}');
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('리뷰 등록 실패 (${res.statusCode})'),
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('리뷰 생성 중 예외 발생: $e');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('리뷰 등록 중 오류가 발생했습니다.')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _submitting = false);
+      }
+    }
   }
 
   @override
@@ -81,14 +155,14 @@ class _ReviewPageState extends State<ReviewPage> {
             children: [
               /// 상단 캡슐 + 별점
               _RatingCapsule(
-                name: '충호',
+                name: '충호', // TODO: 로그인 유저 이름으로 교체 가능
                 rating: _rating,
                 onChanged: (v) => setState(() => _rating = v),
               ),
               const SizedBox(height: 20),
 
               /// 장소 카드
-              _PlaceCard(title: _placeName, imageUrl: _imageUrl),
+              _PlaceCard(title: widget.placeName, imageUrl: widget.imageUrl),
               const SizedBox(height: 20),
 
               /// 입력 카드
@@ -109,16 +183,19 @@ class _ReviewPageState extends State<ReviewPage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('리뷰 내용',
-                        style: txt.titleMedium
-                            ?.copyWith(fontWeight: FontWeight.w700)),
+                    Text(
+                      '리뷰 내용',
+                      style: txt.titleMedium
+                          ?.copyWith(fontWeight: FontWeight.w700),
+                    ),
                     const SizedBox(height: 8),
                     TextField(
                       controller: _controller,
                       maxLines: 6,
                       maxLength: _maxLen,
                       decoration: InputDecoration(
-                        hintText: '방문하신 주차장에 대한 솔직한 리뷰를 작성해 주세요.',
+                        hintText:
+                        '방문하신 주차장에 대한 솔직한 리뷰를 작성해 주세요.',
                         filled: true,
                         fillColor: cs.surfaceContainerHighest,
                         counterText: '',
@@ -150,17 +227,20 @@ class _ReviewPageState extends State<ReviewPage> {
                             child: LinearProgressIndicator(
                               minHeight: 6,
                               value: progress,
-                              backgroundColor:
-                              cs.surfaceContainerHighest.withValues(alpha: .7),
-                              valueColor:
-                              AlwaysStoppedAnimation(cs.primary.withValues(alpha: .9)),
+                              backgroundColor: cs.surfaceContainerHighest
+                                  .withValues(alpha: .7),
+                              valueColor: AlwaysStoppedAnimation(
+                                cs.primary.withValues(alpha: .9),
+                              ),
                             ),
                           ),
                         ),
                         const SizedBox(width: 12),
-                        Text('$len/$_maxLen',
-                            style: txt.labelMedium
-                                ?.copyWith(color: cs.onSurfaceVariant)),
+                        Text(
+                          '$len/$_maxLen',
+                          style: txt.labelMedium
+                              ?.copyWith(color: cs.onSurfaceVariant),
+                        ),
                       ],
                     ),
                   ],
@@ -168,19 +248,27 @@ class _ReviewPageState extends State<ReviewPage> {
               ),
               const SizedBox(height: 24),
 
-              /// 등록 버튼(아이콘 + 필)
+              /// 등록 버튼
               SizedBox(
                 width: double.infinity,
                 child: FilledButton.icon(
-                  icon: const Icon(Icons.send_rounded),
-                  label: const Text('등록'),
+                  icon: _submitting
+                      ? const SizedBox(
+                    height: 18,
+                    width: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                      : const Icon(Icons.send_rounded),
+                  label: Text(_submitting ? '등록 중...' : '등록'),
                   style: FilledButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 14),
                     shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12)),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
                   ),
-                  onPressed:
-                  _controller.text.trim().isEmpty ? null : () {
+                  onPressed: _controller.text.trim().isEmpty || _submitting
+                      ? null
+                      : () {
                     HapticFeedback.lightImpact();
                     _submit();
                   },
@@ -199,6 +287,7 @@ class _RatingCapsule extends StatelessWidget {
   final String name;
   final int rating;
   final ValueChanged<int> onChanged;
+
   const _RatingCapsule({
     required this.name,
     required this.rating,
@@ -246,7 +335,7 @@ class _RatingCapsule extends StatelessWidget {
             ),
             const SizedBox(width: 12),
 
-            // 별점(더 큼 + 터치영역 보정)
+            // 별점
             _StarRow(value: rating, onChanged: onChanged),
           ],
         ),
@@ -255,10 +344,11 @@ class _RatingCapsule extends StatelessWidget {
   }
 }
 
-/// 별 5개(애니메이션 + 터치영역 넉넉)
+/// 별 5개(터치 + 간단 애니메이션)
 class _StarRow extends StatelessWidget {
   final int value; // 0~5
   final ValueChanged<int> onChanged;
+
   const _StarRow({required this.value, required this.onChanged});
 
   @override
@@ -297,6 +387,7 @@ class _StarRow extends StatelessWidget {
 class _PlaceCard extends StatelessWidget {
   final String title;
   final String imageUrl;
+
   const _PlaceCard({required this.title, required this.imageUrl});
 
   @override
@@ -337,9 +428,11 @@ class _PlaceCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('방문 장소',
-                    style: txt.labelSmall
-                        ?.copyWith(color: cs.onSurfaceVariant)),
+                Text(
+                  '방문 장소',
+                  style: txt.labelSmall
+                      ?.copyWith(color: cs.onSurfaceVariant),
+                ),
                 const SizedBox(height: 4),
                 Text(
                   title,
@@ -353,12 +446,17 @@ class _PlaceCard extends StatelessWidget {
                 const SizedBox(height: 6),
                 Row(
                   children: [
-                    Icon(Icons.place_rounded,
-                        size: 16, color: cs.onSurfaceVariant),
+                    Icon(
+                      Icons.place_rounded,
+                      size: 16,
+                      color: cs.onSurfaceVariant,
+                    ),
                     const SizedBox(width: 4),
-                    Text('주차장 · 서울',
-                        style: txt.bodySmall
-                            ?.copyWith(color: cs.onSurfaceVariant)),
+                    Text(
+                      '주차장 · 서울',
+                      style: txt.bodySmall
+                          ?.copyWith(color: cs.onSurfaceVariant),
+                    ),
                   ],
                 ),
               ],

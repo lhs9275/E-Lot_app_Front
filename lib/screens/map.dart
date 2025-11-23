@@ -12,6 +12,7 @@ import '../services/h2_station_api_service.dart';
 import '../services/ev_station_api_service.dart';
 
 import 'favorite.dart'; // ⭐ 즐겨찾기 페이지 연결
+import 'review.dart'; // ⭐ 리뷰 작성 페이지
 import 'package:psp2_fn/auth/token_storage.dart'; // 🔑 JWT 저장소
 import 'bottom_navbar.dart'; // ✅ 분리한 하단 네비게이션 바
 
@@ -86,6 +87,10 @@ class _MapScreenState extends State<MapScreen> {
   /// ⭐ 백엔드 주소 (clos21)
   static const String _backendBaseUrl = 'https://clos21.kr';
 
+  /// ⭐ 리뷰에서 사용할 기본 이미지 (충전소 개별 사진이 아직 없으므로 공통)
+  static const String _defaultStationImageUrl =
+      'https://images.unsplash.com/photo-1483721310020-03333e577078?q=80&w=800&auto=format&fit=crop';
+
   /// ⭐ 즐겨찾기 상태 (stationId 기준)
   final Set<String> _favoriteStationIds = {};
 
@@ -153,15 +158,12 @@ class _MapScreenState extends State<MapScreen> {
 
               /// ⭐ 클러스터 옵션 추가 부분
               clusterOptions: NaverMapClusteringOptions(
-                // 어느 정도 화면 픽셀 거리 안에 모여있으면 하나로 뭉칠지 설정
                 mergeStrategy: const NClusterMergeStrategy(
                   willMergedScreenDistance: {
                     NaverMapClusteringOptions.defaultClusteringZoomRange: 60,
                   },
                 ),
-                // 실제 “N개”라고 표시되는 클러스터 마커 꾸미는 콜백
                 clusterMarkerBuilder: (info, clusterMarker) {
-                  // info.size == 이 클러스터 안에 포함된 마커 개수
                   clusterMarker.setIsFlat(true);
                   clusterMarker.setCaption(
                     NOverlayCaption(
@@ -479,7 +481,7 @@ class _MapScreenState extends State<MapScreen> {
     final normalized = statusName.trim();
     switch (normalized) {
       case '영업중':
-        return Colors.blue; // 여기서 색 바꾸는 중
+        return Colors.blue;
       case '점검중':
       case 'T/T교체':
         return Colors.orange;
@@ -532,8 +534,10 @@ class _MapScreenState extends State<MapScreen> {
                       Expanded(
                         child: Text(
                           station.stationName,
-                          style:
-                          Theme.of(context).textTheme.titleMedium?.copyWith(
+                          style: Theme.of(context)
+                              .textTheme
+                              .titleMedium
+                              ?.copyWith(
                             fontWeight: FontWeight.bold,
                           ),
                         ),
@@ -565,6 +569,30 @@ class _MapScreenState extends State<MapScreen> {
                   _buildStationField(
                     '최종 갱신',
                     station.lastModifiedAt ?? '정보 없음',
+                  ),
+                  const SizedBox(height: 16),
+
+                  /// ⭐ 리뷰 작성 버튼
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton.icon(
+                      icon: const Icon(Icons.rate_review),
+                      label: const Text('리뷰 작성하기'),
+                      onPressed: () {
+                        // 바텀시트 닫고
+                        Navigator.of(context).pop();
+                        // 리뷰 페이지로 이동
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => ReviewPage(
+                              stationId: station.stationId,
+                              placeName: station.stationName,
+                              imageUrl: _defaultStationImageUrl,
+                            ),
+                          ),
+                        );
+                      },
+                    ),
                   ),
                 ],
               ),
@@ -614,6 +642,28 @@ class _MapScreenState extends State<MapScreen> {
               _buildStationField(
                   '층/구역',
                   '${station.floor ?? '-'} / ${station.floorType ?? '-'}'),
+              const SizedBox(height: 16),
+
+              /// ⭐ 리뷰 작성 버튼 (EV도 동일하게 사용)
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  icon: const Icon(Icons.rate_review),
+                  label: const Text('리뷰 작성하기'),
+                  onPressed: () {
+                    Navigator.of(context).pop();
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => ReviewPage(
+                          stationId: station.stationId,
+                          placeName: station.stationName,
+                          imageUrl: _defaultStationImageUrl,
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
             ],
           ),
         );
@@ -631,8 +681,7 @@ class _MapScreenState extends State<MapScreen> {
     final stationId = station.stationId;
     final isFav = _favoriteStationIds.contains(stationId);
 
-    final url =
-    Uri.parse('$_backendBaseUrl/api/stations/$stationId/favorite');
+    final url = Uri.parse('$_backendBaseUrl/api/stations/$stationId/favorite');
     debugPrint('➡️ 즐겨찾기 API 호출: $url (isFav=$isFav)');
 
     // 🔑 TokenStorage에서 accessToken 가져오기

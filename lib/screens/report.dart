@@ -1,6 +1,19 @@
-import 'package:flutter/material.dart';
+// lib/screens/report.dart
+import 'dart:convert';
 
-void main() => runApp(const MyApp());
+import 'package:flutter/material.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:http/http.dart' as http;
+import 'package:psp2_fn/auth/token_storage.dart';
+
+/// ✅ 단독 테스트용 엔트리 포인트
+/// 실제 앱(main.dart)에서 사용할 땐 이 main()은 안 써도 됨.
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await dotenv.load(fileName: '.env');
+
+  runApp(const MyApp());
+}
 
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
@@ -13,12 +26,16 @@ class MyApp extends StatelessWidget {
         useMaterial3: true,
         colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF3B82F6)),
       ),
-      // 앱 실행 즉시 풀스크린 신고 화면
-      home: const ReportPage(),
+      // 데모용: reviewId=123인 리뷰를 신고하는 화면
+      home: const ReportPage(
+        reviewId: 123,
+        authorName: '충호',
+      ),
     );
   }
 }
 
+/// 백엔드에 넘길 reason 코드 후보들
 enum ReportReason {
   help('도움'),
   insult('비방 및 욕설'),
@@ -32,7 +49,17 @@ enum ReportReason {
 }
 
 class ReportPage extends StatefulWidget {
-  const ReportPage({super.key});
+  /// ✅ 신고할 대상 리뷰 ID (백엔드 PathVariable)
+  final int reviewId;
+
+  /// (선택) UI에 보여줄 작성자 이름
+  final String? authorName;
+
+  const ReportPage({
+    super.key,
+    required this.reviewId,
+    this.authorName,
+  });
 
   @override
   State<ReportPage> createState() => _ReportPageState();
@@ -51,8 +78,9 @@ class _ReportPageState extends State<ReportPage> {
     super.dispose();
   }
 
+  /// ✅ 신고 API 호출: POST /api/reviews/{reviewId}/reports
   Future<void> _submit() async {
-    // 유효성 검사
+    // 1. 신고 사유 선택 여부 체크
     if (_selected == null) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -61,36 +89,99 @@ class _ReportPageState extends State<ReportPage> {
       return;
     }
 
+    if (_submitting) return;
+
     setState(() => _submitting = true);
 
-    // 실제 전송 위치 (예: API 호출)
-    final payload = {
-      'targetType': _currentTab == 0 ? 'post' : 'author',
-      'reason': _selected!.name,
-      'reasonLabel': _selected!.label,
-      'detail': _textController.text.trim(),
-      'block': _blockChecked,
-    };
-    debugPrint('신고 전송: $payload');
+    try {
+      // 2. accessToken 확인
+      final token = await TokenStorage.getAccessToken();
+      if (token == null || token.isEmpty) {
+        debugPrint('❌ 신고 실패: 저장된 accessToken이 없습니다. 로그인 필요.');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('로그인 후 신고 기능을 사용할 수 있습니다.'),
+            ),
+          );
+        }
+        setState(() => _submitting = false);
+        return;
+      }
 
-    // 데모용 지연
-    await Future<void>.delayed(const Duration(milliseconds: 300));
+      // 3. URL 구성
+      final baseUrl =
+          dotenv.env['BACKEND_BASE_URL'] ?? 'https://clos21.kr';
+      final uri = Uri.parse(
+          '$baseUrl/api/reviews/${widget.reviewId}/reports');
 
-    if (!mounted) return;
+      // 4. HTTP 헤더 & 바디 구성
+      final headers = <String, String>{
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      };
 
-    // 🔽 입력창 비우기 + 키보드 내리기
-    FocusScope.of(context).unfocus();
-    _textController.clear();
+      // 🔹 디버그용 payload (프론트에서만 사용)
+      final payload = {
+        'targetType': _currentTab == 0 ? 'post' : 'author',
+        'reason': _selected!.name, // ex) 'insult'
+        'reasonLabel': _selected!.label, // ex) '비방 및 욕설'
+        'detail': _textController.text.trim(),
+        'block': _blockChecked,
+      };
+      debugPrint('신고 전송(로컬 payload): $payload');
 
-    setState(() => _submitting = false);
+      // 🔹 실제 백엔드 DTO에 맞게 바디 구성
+      // StationReviewReportRequest(reasonCode, reasonDetail) 가정
+      final backendBody = jsonEncode({
+        'reasonCode': _selected!.name,               // ex) 'insult'
+        'description': _textController.text.trim(), // 상세 내용
+      });
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('신고가 접수되었습니다.')),
-    );
+      debugPrint('신고 전송: POST $uri body=$backendBody');
 
-    // 루트가 아니면 뒤로 가기 (루트면 유지)
-    if (Navigator.of(context).canPop()) {
-      Navigator.of(context).pop();
+      // 5. 요청 전송
+      final res = await http.post(uri, headers: headers, body: backendBody);
+
+      if (!mounted) return;
+
+      if (res.statusCode == 201) {
+        // 6. 성공 처리
+        FocusScope.of(context).unfocus();
+        _textController.clear();
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('신고가 접수되었습니다.')),
+        );
+
+        // 이 페이지가 모달로 올라온 경우 닫아주기
+        if (Navigator.of(context).canPop()) {
+          Navigator.of(context).pop(true); // true = 신고 성공
+        }
+      } else if (res.statusCode == 401) {
+        debugPrint('❌ 신고 실패(401): ${res.body}');
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('로그인이 필요하거나 세션이 만료되었습니다.')),
+        );
+      } else {
+        debugPrint('❌ 신고 실패: [${res.statusCode}] ${res.body}');
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('신고 실패 (${res.statusCode})'),
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('❌ 신고 중 예외: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('신고 중 오류가 발생했습니다.')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _submitting = false);
+      }
     }
   }
 
@@ -100,7 +191,11 @@ class _ReportPageState extends State<ReportPage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('신고/차단하기'),
+        title: Text(
+          widget.authorName != null
+              ? '${widget.authorName}님의 리뷰 신고/차단'
+              : '신고/차단하기',
+        ),
         actions: [
           IconButton(
             tooltip: '닫기',
@@ -125,7 +220,8 @@ class _ReportPageState extends State<ReportPage> {
                   ButtonSegment(value: 1, label: Text('작성자 신고/차단')),
                 ],
                 selected: {_currentTab},
-                onSelectionChanged: (s) => setState(() => _currentTab = s.first),
+                onSelectionChanged: (s) =>
+                    setState(() => _currentTab = s.first),
                 showSelectedIcon: false,
               ),
             ),
@@ -151,31 +247,33 @@ class _ReportPageState extends State<ReportPage> {
                                 ?.copyWith(fontWeight: FontWeight.w700),
                           ),
                           const SizedBox(width: 6),
-                          Text('(필수)', style: TextStyle(color: cs.onSurfaceVariant)),
+                          Text(
+                            '(필수)',
+                            style: TextStyle(color: cs.onSurfaceVariant),
+                          ),
                         ],
                       ),
                     ),
 
-                    // 라디오 리스트 (RadioGroup으로 호환성 유지)
-                    RadioGroup<ReportReason>(
-                      groupValue: _selected,
-                      onChanged: (reason) => setState(() => _selected = reason),
-                      child: Column(
-                        children: ReportReason.values
-                            .map(
-                              (reason) => RadioListTile<ReportReason>(
-                                contentPadding: EdgeInsets.zero,
-                                value: reason,
-                                title: Text(reason.label),
-                                dense: true,
-                                visualDensity: const VisualDensity(
-                                  horizontal: -4,
-                                  vertical: -2,
-                                ),
-                              ),
-                            )
-                            .toList(),
-                      ),
+                    // 라디오 리스트
+                    Column(
+                      children: ReportReason.values
+                          .map(
+                            (reason) => RadioListTile<ReportReason>(
+                          contentPadding: EdgeInsets.zero,
+                          groupValue: _selected,
+                          value: reason,
+                          onChanged: (r) =>
+                              setState(() => _selected = r),
+                          title: Text(reason.label),
+                          dense: true,
+                          visualDensity: const VisualDensity(
+                            horizontal: -4,
+                            vertical: -2,
+                          ),
+                        ),
+                      )
+                          .toList(),
                     ),
 
                     const SizedBox(height: 8),
@@ -200,12 +298,17 @@ class _ReportPageState extends State<ReportPage> {
                     ),
                     const SizedBox(height: 12),
 
-                    // 차단 여부
+                    // 차단 여부 (현재는 서버로 안 보내고 UI 용도 / 추후 확장 가능)
                     CheckboxListTile(
                       contentPadding: EdgeInsets.zero,
                       value: _blockChecked,
-                      onChanged: (v) => setState(() => _blockChecked = v ?? false),
-                      title: const Text('해당 게시물을 차단합니다.'),
+                      onChanged: (v) =>
+                          setState(() => _blockChecked = v ?? false),
+                      title: Text(
+                        _currentTab == 0
+                            ? '해당 게시물을 차단합니다.'
+                            : '해당 사용자의 게시물을 차단합니다.',
+                      ),
                       controlAffinity: ListTileControlAffinity.leading,
                     ),
 
@@ -239,7 +342,9 @@ class _ReportPageState extends State<ReportPage> {
                           ? const SizedBox(
                         height: 20,
                         width: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2),
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                        ),
                       )
                           : const Text('신고'),
                     ),
