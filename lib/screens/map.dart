@@ -16,6 +16,25 @@ import 'review.dart'; // ⭐ 리뷰 작성 페이지
 import 'package:psp2_fn/auth/token_storage.dart'; // 🔑 JWT 저장소
 import 'bottom_navbar.dart'; // ✅ 분리한 하단 네비게이션 바
 
+/// 🔍 검색용 후보 모델
+class _SearchCandidate {
+  final String name;
+  final bool isH2;
+  final H2Station? h2;
+  final EVStation? ev;
+  final double lat;
+  final double lng;
+
+  const _SearchCandidate({
+    required this.name,
+    required this.isH2,
+    this.h2,
+    this.ev,
+    required this.lat,
+    required this.lng,
+  });
+}
+
 /// ✅ 이 파일 단독 실행용 엔트리 포인트
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -76,6 +95,12 @@ class _MapScreenState extends State<MapScreen> {
   bool _isLoadingH2Stations = true;
   bool _isLoadingEvStations = true;
   String? _stationError;
+
+  // 검색창 컨트롤러
+  final TextEditingController _searchController = TextEditingController();
+
+  // 🔍 자동완성 후보 목록
+  List<_SearchCandidate> _searchResults = [];
 
   // 시작 위치 (예: 서울시청)
   final NLatLng _initialTarget = const NLatLng(37.5666, 126.9790);
@@ -140,6 +165,7 @@ class _MapScreenState extends State<MapScreen> {
   void dispose() {
     _h2AutoRefreshTimer?.cancel(); // ⭐ H2 자동 새로고침 타이머 정리
     _controller = null;
+    _searchController.dispose(); // 검색창 컨트롤러 정리
     super.dispose();
   }
 
@@ -176,8 +202,18 @@ class _MapScreenState extends State<MapScreen> {
               ),
               onMapReady: _handleMapReady,
             ),
+
+            /// 🔍 상단 검색창 + 자동완성 리스트
+            Positioned(
+              top: 35, // ⬅️ 살짝 아래로 내린 위치
+              left: 16,
+              right: 16,
+              child: _buildSearchBar(),
+            ),
+
             if (_isInitialLoading) _buildLoadingBanner(),
-            if (_stationError != null) _buildErrorBanner(),
+            // 🔕 에러 배너 잠시 숨김 (전기충전소 에러 떠도 검색창 가리지 않도록)
+            // if (_stationError != null) _buildErrorBanner(),
             if (!_isInitialLoading &&
                 _stationError == null &&
                 _totalMappableStationCount > 0)
@@ -209,6 +245,250 @@ class _MapScreenState extends State<MapScreen> {
         selectedIndex: _selectedIndex,
         onTapItem: _onTapItem,
       ),
+    );
+  }
+
+  /// 🔍 상단 검색창 UI + 유사 이름 리스트
+  Widget _buildSearchBar() {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // 검색창 본체
+        Container(
+          height: 44,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(
+              color: const Color(0xFF5A3FFF), // 보라색 테두리
+              width: 1,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.08),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _searchController,
+                  decoration: const InputDecoration(
+                    border: InputBorder.none,
+                    hintText: '충전소 이름으로 검색',
+                    isCollapsed: true,
+                  ),
+                  textInputAction: TextInputAction.search,
+                  onSubmitted: _onSearchSubmitted,
+                  onChanged: _onSearchChanged, // 🔍 입력할 때마다 유사 이름 검색
+                ),
+              ),
+              GestureDetector(
+                onTap: () => _onSearchSubmitted(_searchController.text),
+                child: const Icon(
+                  Icons.search,
+                  size: 20,
+                  color: Color(0xFF5A3FFF),
+                ),
+              ),
+            ],
+          ),
+        ),
+
+        // 유사 이름 자동완성 리스트
+        if (_searchResults.isNotEmpty) const SizedBox(height: 6),
+        if (_searchResults.isNotEmpty)
+          Container(
+            // 검색창과 같은 폭, 조금 둥글게
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.08),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            constraints: const BoxConstraints(
+              // 너무 길어지지 않게 최대 높이 제한
+              maxHeight: 220,
+            ),
+            child: ListView.builder(
+              padding: EdgeInsets.zero,
+              shrinkWrap: true,
+              physics: const BouncingScrollPhysics(),
+              itemCount: _searchResults.length,
+              itemBuilder: (context, index) {
+                final item = _searchResults[index];
+                return ListTile(
+                  dense: true,
+                  leading: Icon(
+                    item.isH2 ? Icons.local_gas_station : Icons.ev_station,
+                    size: 18,
+                    color: item.isH2 ? Colors.blue : Colors.green,
+                  ),
+                  title: Text(
+                    item.name,
+                    style: const TextStyle(fontSize: 14),
+                  ),
+                  onTap: () => _onTapSearchCandidate(item),
+                );
+              },
+            ),
+          ),
+      ],
+    );
+  }
+
+  /// 🔍 타이핑할 때마다 유사 이름 후보 찾아서 리스트에 넣기
+  void _onSearchChanged(String raw) {
+    final query = raw.trim();
+    if (query.isEmpty) {
+      setState(() {
+        _searchResults = [];
+      });
+      return;
+    }
+
+    final lower = query.toLowerCase();
+    final List<_SearchCandidate> results = [];
+
+    // H2 쪽에서 이름에 query가 포함된 것
+    for (final s in _h2StationsWithCoordinates) {
+      final name = s.stationName;
+      if (name.toLowerCase().contains(lower)) {
+        results.add(
+          _SearchCandidate(
+            name: name,
+            isH2: true,
+            h2: s,
+            ev: null,
+            lat: s.latitude!,
+            lng: s.longitude!,
+          ),
+        );
+      }
+    }
+
+    // EV 쪽에서 이름에 query가 포함된 것
+    for (final s in _evStationsWithCoordinates) {
+      final name = s.stationName;
+      if (name.toLowerCase().contains(lower)) {
+        results.add(
+          _SearchCandidate(
+            name: name,
+            isH2: false,
+            h2: null,
+            ev: s,
+            lat: s.latitude!,
+            lng: s.longitude!,
+          ),
+        );
+      }
+    }
+
+    // 너무 길어지지 않게 상위 몇 개만 (예: 8개)
+    if (results.length > 8) {
+      results.removeRange(8, results.length);
+    }
+
+    setState(() {
+      _searchResults = results;
+    });
+  }
+
+  /// 🔍 자동완성 후보 하나를 탭했을 때 동작
+  void _onTapSearchCandidate(_SearchCandidate item) {
+    _searchController.text = item.name;
+    FocusScope.of(context).unfocus();
+    setState(() {
+      _searchResults = [];
+    });
+
+    _controller?.updateCamera(
+      NCameraUpdate.fromCameraPosition(
+        NCameraPosition(target: NLatLng(item.lat, item.lng), zoom: 14),
+      ),
+    );
+
+    if (item.isH2 && item.h2 != null) {
+      _showH2StationBottomSheet(item.h2!);
+    } else if (!item.isH2 && item.ev != null) {
+      _showEvStationBottomSheet(item.ev!);
+    }
+  }
+
+  /// 검색 실행 로직: 엔터/돋보기 눌렀을 때
+  void _onSearchSubmitted(String rawQuery) {
+    final query = rawQuery.trim();
+    if (query.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('충전소 이름을 입력해주세요.')),
+      );
+      return;
+    }
+
+    // 자동완성 목록이 있으면 첫 번째 추천 바로 사용
+    if (_searchResults.isNotEmpty) {
+      _onTapSearchCandidate(_searchResults.first);
+      return;
+    }
+
+    final lower = query.toLowerCase();
+
+    // 1) H2에서 먼저 찾고
+    H2Station? foundH2;
+    for (final s in _h2StationsWithCoordinates) {
+      if (s.stationName.toLowerCase().contains(lower)) {
+        foundH2 = s;
+        break;
+      }
+    }
+
+    if (foundH2 != null) {
+      final lat = foundH2.latitude!;
+      final lng = foundH2.longitude!;
+      _controller?.updateCamera(
+        NCameraUpdate.fromCameraPosition(
+          NCameraPosition(target: NLatLng(lat, lng), zoom: 14),
+        ),
+      );
+      FocusScope.of(context).unfocus();
+      _showH2StationBottomSheet(foundH2);
+      return;
+    }
+
+    // 2) 없으면 EV에서 검색
+    EVStation? foundEv;
+    for (final s in _evStationsWithCoordinates) {
+      if (s.stationName.toLowerCase().contains(lower)) {
+        foundEv = s;
+        break;
+      }
+    }
+
+    if (foundEv != null) {
+      final lat = foundEv.latitude!;
+      final lng = foundEv.longitude!;
+      _controller?.updateCamera(
+        NCameraUpdate.fromCameraPosition(
+          NCameraPosition(target: NLatLng(lat, lng), zoom: 14),
+        ),
+      );
+      FocusScope.of(context).unfocus();
+      _showEvStationBottomSheet(foundEv);
+      return;
+    }
+
+    // 3) 둘 다 없으면 안내
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('"$query" 이름의 충전소를 찾을 수 없습니다.')),
     );
   }
 
@@ -313,7 +593,7 @@ class _MapScreenState extends State<MapScreen> {
   /// 현재 표시 중인 마커의 개수를 보여주는 칩.
   Widget _buildStationsBadge() {
     return Positioned(
-      top: 16,
+      top: 96, // 🔹 검색창(top:40) 아래로 더 내림
       left: 16,
       child: Chip(
         avatar: const Icon(Icons.ev_station, size: 16, color: Colors.white),
