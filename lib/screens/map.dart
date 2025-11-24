@@ -961,76 +961,59 @@ class _MapScreenState extends State<MapScreen> {
     final stationId = station.stationId;
     final isFav = _favoriteStationIds.contains(stationId);
 
-    final url = Uri.parse('$_backendBaseUrl/api/stations/$stationId/favorite');
-    debugPrint('➡️ 즐겨찾기 API 호출: $url (isFav=$isFav)');
+    // 🔑 accessToken 안전하게 가져오기
+    String? accessToken = await TokenStorage.getAccessToken();
+    debugPrint('📦 MapScreen에서 읽은 accessToken: $accessToken');
 
-    // 🔑 TokenStorage에서 accessToken 가져오기
-    final accessToken = await TokenStorage.getAccessToken();
-
-    // 토큰이 없으면 즐겨찾기 사용 불가
+    // secure storage가 write 완료되기 전에 접근할 경우 null일 수 있으므로 대기 추가
     if (accessToken == null || accessToken.isEmpty) {
-      debugPrint('❌ 즐겨찾기 실패: 저장된 accessToken이 없습니다. 로그인 필요.');
+      await Future.delayed(const Duration(milliseconds: 500));
+      accessToken = await TokenStorage.getAccessToken();
+      debugPrint('🕐 재시도 후 accessToken: $accessToken');
+    }
 
+    if (accessToken == null || accessToken.isEmpty) {
+      debugPrint('❌ 즐겨찾기 실패: accessToken이 없습니다.');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('로그인 후 즐겨찾기 기능을 사용할 수 있습니다.'),
-          ),
+          const SnackBar(content: Text('로그인 후 즐겨찾기 기능을 사용할 수 있습니다.')),
         );
       }
       return;
     }
 
+    final url = Uri.parse('$_backendBaseUrl/api/stations/$stationId/favorite');
+    debugPrint('➡️ 즐겨찾기 API 호출: $url (isFav=$isFav)');
+
     try {
       http.Response res;
-
       if (!isFav) {
-        // ⭐ 즐겨찾기 추가 (POST)
         res = await http.post(
           url,
-          headers: {
-            'Authorization': 'Bearer $accessToken',
-          },
+          headers: {'Authorization': 'Bearer $accessToken'},
         );
-
-        debugPrint(
-          '⬅️ POST 결과: ${res.statusCode} ${res.body.isEmpty ? '' : res.body}',
-        );
-
-        if (res.statusCode == 201 ||
-            res.statusCode == 200 ||
-            res.statusCode == 204) {
-          setState(() {
-            _favoriteStationIds.add(stationId);
-          });
-          debugPrint('✅ 즐겨찾기 추가 성공: $stationId');
+        debugPrint('⬅️ POST 결과: ${res.statusCode} ${res.body}');
+        if ([200, 201, 204].contains(res.statusCode)) {
+          setState(() => _favoriteStationIds.add(stationId));
+          debugPrint('✅ 즐겨찾기 추가 성공');
         } else {
           debugPrint('❌ 즐겨찾기 추가 실패: ${res.statusCode} ${res.body}');
         }
       } else {
-        // ⭐ 즐겨찾기 해제 (DELETE)
         res = await http.delete(
           url,
-          headers: {
-            'Authorization': 'Bearer $accessToken',
-          },
+          headers: {'Authorization': 'Bearer $accessToken'},
         );
-
-        debugPrint(
-          '⬅️ DELETE 결과: ${res.statusCode} ${res.body.isEmpty ? '' : res.body}',
-        );
-
-        if (res.statusCode == 204 || res.statusCode == 200) {
-          setState(() {
-            _favoriteStationIds.remove(stationId);
-          });
-          debugPrint('✅ 즐겨찾기 해제 성공: $stationId');
+        debugPrint('⬅️ DELETE 결과: ${res.statusCode} ${res.body}');
+        if ([200, 204].contains(res.statusCode)) {
+          setState(() => _favoriteStationIds.remove(stationId));
+          debugPrint('✅ 즐겨찾기 해제 성공');
         } else {
           debugPrint('❌ 즐겨찾기 해제 실패: ${res.statusCode} ${res.body}');
         }
       }
     } catch (e) {
-      debugPrint('❌ 즐겨찾기 토글 중 오류: $e');
+      debugPrint('❌ 즐겨찾기 중 오류: $e');
     }
   }
 
