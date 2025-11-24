@@ -6,6 +6,8 @@ import 'package:flutter_naver_map/flutter_naver_map.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:http/http.dart' as http;
 
+import '../auth/auth_api_http.dart';
+import '../auth/token_storage.dart';
 import '../models/h2_station.dart';
 import '../models/ev_station.dart';
 import '../services/h2_station_api_service.dart';
@@ -94,24 +96,25 @@ class _MapScreenState extends State<MapScreen> {
     final stationId = station.stationId;
     final isFav = _favoriteStationIds.contains(stationId);
 
-    final url =
-    Uri.parse('$_backendBaseUrl/api/stations/$stationId/favorite');
+    final path = '/api/stations/$stationId/favorite';
+    final url = Uri.parse('$_backendBaseUrl$path');
     debugPrint('➡️ 즐겨찾기 API 호출: $url (isFav=$isFav)');
 
-    // TODO: 실제 로그인 후 발급받은 토큰으로 교체해줘
-    const accessToken = 'YOUR_ACCESS_TOKEN_HERE';
+    final accessToken = await TokenStorage.getAccessToken();
+    if (accessToken == null || accessToken.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('로그인이 필요합니다. 카카오 로그인을 다시 진행해 주세요.')),
+      );
+      return;
+    }
 
     try {
       http.Response res;
 
       if (!isFav) {
         // ⭐ 즐겨찾기 추가 (POST)
-        res = await http.post(
-          url,
-          headers: {
-            if (accessToken.isNotEmpty) 'Authorization': 'Bearer $accessToken',
-          },
-        );
+        res = await AuthHttpClient.post(path);
 
         debugPrint(
             '⬅️ POST 결과: ${res.statusCode} ${res.body.isEmpty ? '' : res.body}');
@@ -123,17 +126,17 @@ class _MapScreenState extends State<MapScreen> {
             _favoriteStationIds.add(stationId);
           });
           debugPrint('✅ 즐겨찾기 추가 성공: $stationId');
+        } else if (res.statusCode == 401) {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('세션이 만료되었습니다. 다시 로그인해 주세요.')),
+          );
         } else {
           debugPrint('❌ 즐겨찾기 추가 실패: ${res.statusCode} ${res.body}');
         }
       } else {
         // ⭐ 즐겨찾기 해제 (DELETE)
-        res = await http.delete(
-          url,
-          headers: {
-            if (accessToken.isNotEmpty) 'Authorization': 'Bearer $accessToken',
-          },
-        );
+        res = await AuthHttpClient.delete(path);
 
         debugPrint(
             '⬅️ DELETE 결과: ${res.statusCode} ${res.body.isEmpty ? '' : res.body}');
@@ -143,6 +146,11 @@ class _MapScreenState extends State<MapScreen> {
             _favoriteStationIds.remove(stationId);
           });
           debugPrint('✅ 즐겨찾기 해제 성공: $stationId');
+        } else if (res.statusCode == 401) {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('세션이 만료되었습니다. 다시 로그인해 주세요.')),
+          );
         } else {
           debugPrint('❌ 즐겨찾기 해제 실패: ${res.statusCode} ${res.body}');
         }

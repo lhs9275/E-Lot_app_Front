@@ -9,48 +9,63 @@ class AuthHttpClient {
   /// GET 예시
   static Future<http.Response> get(String path) async {
     final uri = Uri.parse('$_baseUrl$path');
-    return _send(() => http.get(uri, headers: {}));
+    return _send((headers) => http.get(uri, headers: headers));
+  }
+
+  /// 본문 없이 POST
+  static Future<http.Response> post(String path) {
+    final uri = Uri.parse('$_baseUrl$path');
+    return _send((headers) => http.post(uri, headers: headers));
   }
 
   /// POST 예시 (JSON body)
-  static Future<http.Response> postJson(String path, Map<String, dynamic> body) async {
+  static Future<http.Response> postJson(
+      String path, Map<String, dynamic> body) async {
     final uri = Uri.parse('$_baseUrl$path');
     return _send(
-          () => http.post(
+      (headers) => http.post(
         uri,
-        headers: {'Content-Type': 'application/json'},
+        headers: {
+          ...headers,
+          'Content-Type': 'application/json',
+        },
         body: jsonEncode(body),
       ),
     );
   }
 
+  /// DELETE 예시
+  static Future<http.Response> delete(String path) {
+    final uri = Uri.parse('$_baseUrl$path');
+    return _send((headers) => http.delete(uri, headers: headers));
+  }
+
   /// 공통 요청 처리 + 401 시 refresh
   static Future<http.Response> _send(
-      Future<http.Response> Function() requestFn,
-      ) async {
-    String? accessToken = await TokenStorage.getAccessToken();
+    Future<http.Response> Function(Map<String, String> headers) requestFn,
+  ) async {
+    var accessToken = await TokenStorage.getAccessToken();
 
     // 1차 시도
-    var response = await _requestWithAuthHeader(requestFn, accessToken);
+    var response = await requestFn(_authHeaders(accessToken));
 
     // 401이면 refresh 시도 후 한 번 더
     if (response.statusCode == 401) {
-      await AuthApi.refreshTokens();
-      accessToken = await TokenStorage.getAccessToken();
-      response = await _requestWithAuthHeader(requestFn, accessToken);
+      try {
+        await AuthApi.refreshTokens();
+        accessToken = await TokenStorage.getAccessToken();
+      } catch (_) {
+        // refresh 실패 시 원본 응답을 그대로 돌려준다.
+        return response;
+      }
+      response = await requestFn(_authHeaders(accessToken));
     }
 
     return response;
   }
 
-  static Future<http.Response> _requestWithAuthHeader(
-      Future<http.Response> Function() requestFn,
-      String? accessToken,
-      ) async {
-    // 여기선 http.Request를 직접 쓰거나, requestFn에 headers를 인자로 넘기는 방식으로
-    // 더 깔끔하게 할 수 있는데,
-    // 사용 패턴에 따라 구조 조금 손봐야 해서, 패턴 정하면 거기에 맞춰 리팩토링해도 됨.
-    // 우선은 간단한 예시로, 각 API 쪽에서 headers에 accessToken을 집어넣는 구조로 쓰는 게 더 나음.
-    return requestFn();
+  static Map<String, String> _authHeaders(String? accessToken) {
+    if (accessToken == null || accessToken.isEmpty) return {};
+    return {'Authorization': 'Bearer $accessToken'};
   }
 }
