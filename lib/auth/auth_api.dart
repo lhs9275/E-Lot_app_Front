@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:developer' as developer;
 import 'package:http/http.dart' as http;
 import 'package:kakao_flutter_sdk_user/kakao_flutter_sdk_user.dart';
 import 'token_storage.dart';
@@ -26,10 +27,22 @@ class AuthApi {
         body: jsonEncode({'kakaoAccessToken': token.accessToken}),
       );
 
+      developer.log(
+        '[/mapi/auth/kakao] response ${response.statusCode}: ${response.body}',
+        name: 'AuthApi',
+      );
+
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         final accessToken = data['access_token'] as String;
         final refreshToken = data['refresh_token'] as String;
+
+        developer.log(
+          '[/mapi/auth/kakao] issued tokens '
+              'access=${_previewToken(accessToken)} '
+              'refresh=${_previewToken(refreshToken)}',
+          name: 'AuthApi',
+        );
 
         await TokenStorage.saveTokens(
           accessToken: accessToken,
@@ -44,6 +57,11 @@ class AuthApi {
     } catch (e) {
       rethrow;
     }
+  }
+
+  static String _previewToken(String token) {
+    if (token.length <= 10) return token;
+    return '${token.substring(0, 6)}...${token.substring(token.length - 4)}';
   }
 
   /// refresh 토큰으로 새 JWT 발급

@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:developer' as developer;
 
 import 'package:flutter/material.dart';
 // import 'package:flutter_svg/flutter_svg.dart';
@@ -89,6 +90,11 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
         body: jsonEncode({'kakaoAccessToken': kakaoToken.accessToken}),
       );
 
+      developer.log(
+        '[/mapi/auth/kakao] response ${response.statusCode}: ${response.body}',
+        name: 'WelcomeScreen',
+      );
+
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         final accessToken = data['access_token'] as String?;
@@ -105,6 +111,13 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
         await TokenStorage.saveTokens(
           accessToken: accessToken,
           refreshToken: refreshToken,
+        );
+
+        developer.log(
+          '[/mapi/auth/kakao] issued tokens '
+              'access=${_previewToken(accessToken)} '
+              'refresh=${_previewToken(refreshToken)}',
+          name: 'WelcomeScreen',
         );
 
         if (!context.mounted) return;
@@ -129,6 +142,11 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
         );
       }
     }
+  }
+
+  String _previewToken(String token) {
+    if (token.length <= 10) return token;
+    return '${token.substring(0, 6)}...${token.substring(token.length - 4)}';
   }
 
   // ------------------------------------------------------------------------
