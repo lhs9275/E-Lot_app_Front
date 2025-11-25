@@ -11,10 +11,9 @@ import '../models/ev_station.dart';
 import '../services/h2_station_api_service.dart';
 import '../services/ev_station_api_service.dart';
 
-import 'favorite.dart'; // ⭐ 즐겨찾기 페이지 연결
 import 'review.dart'; // ⭐ 리뷰 작성 페이지
 import 'package:psp2_fn/auth/token_storage.dart'; // 🔑 JWT 저장소
-import 'bottom_navbar.dart'; // ✅ 분리한 하단 네비게이션 바
+import 'bottom_navbar.dart'; // ✅ 공통 하단 네비게이션 바
 
 /// 🔍 검색용 후보 모델
 class _SearchCandidate {
@@ -106,8 +105,6 @@ class _MapScreenState extends State<MapScreen> {
   final NLatLng _initialTarget = const NLatLng(37.5666, 126.9790);
   late final NCameraPosition _initialCamera =
   NCameraPosition(target: _initialTarget, zoom: 8.5);
-
-  int _selectedIndex = 0;
 
   /// ⭐ 백엔드 주소 (clos21)
   static const String _backendBaseUrl = 'https://clos21.kr';
@@ -240,10 +237,9 @@ class _MapScreenState extends State<MapScreen> {
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
 
-      /// ✅ 하단 네비게이션 바를 분리한 MainBottomNavBar 사용
-      bottomNavigationBar: MainBottomNavBar(
-        selectedIndex: _selectedIndex,
-        onTapItem: _onTapItem,
+      /// ✅ 하단 네비게이션 바 (지도 탭이므로 index = 0)
+      bottomNavigationBar: const MainBottomNavBar(
+        currentIndex: 0,
       ),
     );
   }
@@ -1014,40 +1010,6 @@ class _MapScreenState extends State<MapScreen> {
       }
     } catch (e) {
       debugPrint('❌ 즐겨찾기 중 오류: $e');
-    }
-  }
-
-  // --- 네비게이션 & FAB ---
-  /// 하단 네비게이션 버튼 클릭을 처리한다.
-  void _onTapItem(int idx) {
-    setState(() => _selectedIndex = idx);
-
-    switch (idx) {
-      case 0:
-        _controller?.updateCamera(
-          NCameraUpdate.fromCameraPosition(
-            NCameraPosition(target: _initialTarget, zoom: 10),
-          ),
-        );
-        break;
-      case 1:
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('근처 보기 준비 중입니다.')),
-        );
-        break;
-      case 2:
-      // ⭐ 즐겨찾기 페이지로 이동 (목록은 나중에 백엔드 GET으로 구성)
-        Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (context) => const FavoritesPage(),
-          ),
-        );
-        break;
-      case 3:
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('내 정보 보기 준비 중입니다.')),
-        );
-        break;
     }
   }
 
