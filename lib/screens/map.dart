@@ -1,5 +1,6 @@
 // lib/screens/map.dart
 import 'dart:async';
+import 'dart:convert'; // ⭐ 즐겨찾기 동기화용 JSON 파싱
 
 import 'package:flutter/material.dart';
 import 'package:flutter_naver_map/flutter_naver_map.dart';
@@ -211,9 +212,7 @@ class _MapScreenState extends State<MapScreen> {
             if (_isInitialLoading) _buildLoadingBanner(),
             // 🔕 에러 배너 잠시 숨김 (전기충전소 에러 떠도 검색창 가리지 않도록)
             // if (_stationError != null) _buildErrorBanner(),
-            if (!_isInitialLoading &&
-                _stationError == null &&
-                _totalMappableStationCount > 0)
+            if (!_isInitialLoading && _totalMappableStationCount > 0)
               _buildStationsBadge(),
             if (!_isInitialLoading &&
                 _stationError == null &&
@@ -784,9 +783,60 @@ class _MapScreenState extends State<MapScreen> {
     }
   }
 
+  // --- ⭐ 즐겨찾기 서버 동기화(방법 1) ---
+  Future<void> _syncFavoritesFromServer() async {
+    String? accessToken = await TokenStorage.getAccessToken();
+    if (accessToken == null || accessToken.isEmpty) {
+      debugPrint('⭐ syncFavorites: 로그인 안 됨, 즐겨찾기 비움');
+      if (!mounted) return;
+      setState(() {
+        _favoriteStationIds.clear();
+      });
+      return;
+    }
+
+    try {
+      final url = Uri.parse('$_backendBaseUrl/api/me/favorites/stations');
+      final res = await http.get(
+        url,
+        headers: {'Authorization': 'Bearer $accessToken'},
+      );
+
+      debugPrint('⭐ 즐겨찾기 동기화 결과: ${res.statusCode} ${res.body}');
+
+      if (res.statusCode == 200) {
+        final body = jsonDecode(res.body);
+        if (body is List) {
+          final ids = <String>{};
+          for (final raw in body) {
+            final map = raw as Map<String, dynamic>;
+            final id = (map['stationId'] ?? map['id'] ?? '').toString();
+            if (id.isNotEmpty) {
+              ids.add(id);
+            }
+          }
+          if (!mounted) return;
+          setState(() {
+            _favoriteStationIds
+              ..clear()
+              ..addAll(ids);
+          });
+        }
+      } else {
+        debugPrint('⭐ 즐겨찾기 동기화 실패: ${res.statusCode}');
+      }
+    } catch (e) {
+      debugPrint('⭐ 즐겨찾기 동기화 오류: $e');
+    }
+  }
+
   // --- 바텀 시트 ---
   /// 수소 충전소 아이콘을 탭했을 때 상세 정보를 보여주는 바텀 시트.
-  void _showH2StationBottomSheet(H2Station station) {
+  void _showH2StationBottomSheet(H2Station station) async {
+    if (!mounted) return;
+
+    // 🔁 바텀시트 열기 전에 서버 기준 즐겨찾기 동기화
+    await _syncFavoritesFromServer();
     if (!mounted) return;
 
     showModalBottomSheet<void>(

@@ -7,7 +7,7 @@ import 'package:psp2_fn/auth/token_storage.dart';
 
 /// 즐겨찾기 아이템 모델 (stationId + stationName만 사용)
 class FavoriteItem {
-  final String id;   // stationId
+  final String id; // stationId
   final String name; // stationName
 
   const FavoriteItem({
@@ -62,8 +62,7 @@ class _FavoritesPageState extends State<FavoritesPage> {
 
     try {
       // 🔹 실제 컨트롤러: @GetMapping("/me/favorites/stations")
-      final url =
-      Uri.parse('$_backendBaseUrl/api/me/favorites/stations');
+      final url = Uri.parse('$_backendBaseUrl/api/me/favorites/stations');
       final res = await http.get(
         url,
         headers: {
@@ -311,7 +310,7 @@ class _EmptyState extends StatelessWidget {
   }
 }
 
-/// 한 줄 타일 (stationName만 표시)
+/// 한 줄 타일 (stationName만 표시) - 카드형 디자인
 class _FavoriteTile extends StatelessWidget {
   const _FavoriteTile({required this.item, required this.onDelete});
   final FavoriteItem item;
@@ -322,36 +321,55 @@ class _FavoriteTile extends StatelessWidget {
     final txt = Theme.of(context).textTheme;
     final cs = Theme.of(context).colorScheme;
 
-    return ListTile(
-      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-      leading: CircleAvatar(
-        radius: 18,
-        backgroundColor: cs.surfaceVariant,
-        child: Icon(
-          Icons.ev_station_rounded,
-          color: cs.onSurfaceVariant,
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(18),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.06),
+              blurRadius: 14,
+              offset: const Offset(0, 6),
+            ),
+          ],
+        ),
+        child: ListTile(
+          contentPadding:
+          const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          leading: CircleAvatar(
+            radius: 18,
+            backgroundColor: cs.surfaceVariant,
+            child: Icon(
+              Icons.ev_station_rounded,
+              color: cs.onSurfaceVariant,
+            ),
+          ),
+          title: Text(
+            item.name,
+            style: txt.titleMedium?.copyWith(
+              fontSize: 17,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          subtitle: Text(
+            'ID: ${item.id}',
+            style: txt.bodySmall?.copyWith(
+              color: cs.onSurfaceVariant,
+              fontSize: 12,
+            ),
+          ),
+          trailing: IconButton(
+            tooltip: '삭제',
+            icon: const Icon(Icons.delete_outline_rounded),
+            onPressed: onDelete,
+          ),
+          onTap: () {
+            // TODO: 나중에 이 stationId로 지도 이동 / 상세 연결 가능
+          },
         ),
       ),
-      title: Text(
-        item.name,
-        style: txt.titleMedium
-            ?.copyWith(fontSize: 17, fontWeight: FontWeight.w600),
-      ),
-      subtitle: Text(
-        'ID: ${item.id}',
-        style: txt.bodySmall?.copyWith(
-          color: cs.onSurfaceVariant,
-          fontSize: 12,
-        ),
-      ),
-      trailing: IconButton(
-        tooltip: '삭제',
-        icon: const Icon(Icons.delete_outline_rounded),
-        onPressed: onDelete,
-      ),
-      onTap: () {
-        // TODO: 나중에 이 stationId로 지도 이동 / 상세 연결 가능
-      },
     );
   }
 }

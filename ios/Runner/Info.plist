@@ -62,5 +62,14 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+
+	<!-- ✅ 위치 권한 안내 문구 추가 (앱 사용 중) -->
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>내 주변 충전소와 주차장을 보여주기 위해 위치 정보가 필요합니다.</string>
+
+	<!-- ✅ (선택) 항상 허용까지 사용하고 싶을 때 -->
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>내 주변 충전소와 주차장을 항상 더 정확하게 보여주기 위해 위치 정보가 필요합니다.</string>
+
 </dict>
 </plist>

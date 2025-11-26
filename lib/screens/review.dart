@@ -92,6 +92,7 @@ class _ReviewPageState extends State<ReviewPage> {
       };
 
       final body = jsonEncode({
+        'stationId': widget.stationId,  // ✅ 추가
         'rating': _rating,
         'content': content,
       });
@@ -185,8 +186,8 @@ class _ReviewPageState extends State<ReviewPage> {
                   children: [
                     Text(
                       '리뷰 내용',
-                      style: txt.titleMedium
-                          ?.copyWith(fontWeight: FontWeight.w700),
+                      style:
+                      txt.titleMedium?.copyWith(fontWeight: FontWeight.w700),
                     ),
                     const SizedBox(height: 8),
                     TextField(
@@ -430,8 +431,8 @@ class _PlaceCard extends StatelessWidget {
               children: [
                 Text(
                   '방문 장소',
-                  style: txt.labelSmall
-                      ?.copyWith(color: cs.onSurfaceVariant),
+                  style:
+                  txt.labelSmall?.copyWith(color: cs.onSurfaceVariant),
                 ),
                 const SizedBox(height: 4),
                 Text(
