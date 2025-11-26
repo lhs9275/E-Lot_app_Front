@@ -9,8 +9,10 @@ import 'package:http/http.dart' as http;
 
 import '../models/h2_station.dart';
 import '../models/ev_station.dart';
+import '../models/parking_lot.dart';
 import '../services/h2_station_api_service.dart';
 import '../services/ev_station_api_service.dart';
+import '../services/parking_lot_api_service.dart';
 
 import 'review.dart'; // ⭐ 리뷰 작성 페이지
 import 'package:psp2_fn/auth/token_storage.dart'; // 🔑 JWT 저장소
@@ -62,6 +64,21 @@ Future<void> main() async {
     h2StationApi = H2StationApiService(baseUrl: h2BaseUrl);
   }
 
+  final evBaseUrl = dotenv.env['EV_API_BASE_URL'];
+  if (evBaseUrl == null || evBaseUrl.isEmpty) {
+    debugPrint('❌ EV_API_BASE_URL 이 .env에 없습니다.');
+  } else {
+    evStationApi = EVStationApiService(baseUrl: evBaseUrl);
+  }
+
+  final parkingBaseUrl =
+      dotenv.env['PARKING_API_BASE_URL'] ?? evBaseUrl ?? h2BaseUrl;
+  if (parkingBaseUrl == null || parkingBaseUrl.isEmpty) {
+    debugPrint('❌ PARKING_API_BASE_URL 이 .env에 없습니다.');
+  } else {
+    parkingLotApi = ParkingLotApiService(baseUrl: parkingBaseUrl);
+  }
+
   runApp(const _MapApp());
 }
 
@@ -92,8 +109,10 @@ class _MapScreenState extends State<MapScreen> {
   NaverMapController? _controller;
   List<H2Station> _h2Stations = [];
   List<EVStation> _evStations = [];
+  List<ParkingLot> _parkingLots = [];
   bool _isLoadingH2Stations = true;
   bool _isLoadingEvStations = true;
+  bool _isLoadingParkingLots = true;
   String? _stationError;
 
   // 검색창 컨트롤러
@@ -123,6 +142,7 @@ class _MapScreenState extends State<MapScreen> {
   /// 💡 지도 마커 색상 (유형 구분)
   static const Color _h2MarkerBaseColor = Color(0xFF2563EB); // 파란색 톤
   static const Color _evMarkerBaseColor = Color(0xFF10B981); // 초록색 톤
+  static const Color _parkingMarkerBaseColor = Color(0xFFF59E0B); // 주차장 주황
 
   // --- 계산용 getter 들 ---
   Iterable<H2Station> get _h2StationsWithCoordinates => _h2Stations.where(
@@ -133,10 +153,18 @@ class _MapScreenState extends State<MapScreen> {
         (station) => station.latitude != null && station.longitude != null,
   );
 
-  int get _totalMappableStationCount =>
-      _h2StationsWithCoordinates.length + _evStationsWithCoordinates.length;
+  Iterable<ParkingLot> get _parkingLotsWithCoordinates =>
+      _parkingLots.where(
+            (lot) => lot.latitude != null && lot.longitude != null,
+      );
 
-  bool get _isInitialLoading => _isLoadingH2Stations || _isLoadingEvStations;
+  int get _totalMappableMarkerCount =>
+      _h2StationsWithCoordinates.length +
+          _evStationsWithCoordinates.length +
+          _parkingLotsWithCoordinates.length;
+
+  bool get _isInitialLoading =>
+      _isLoadingH2Stations || _isLoadingEvStations || _isLoadingParkingLots;
 
   // --- 라이프사이클 ---
   @override
@@ -216,14 +244,14 @@ class _MapScreenState extends State<MapScreen> {
             if (_isInitialLoading) _buildLoadingBanner(),
             // 🔕 에러 배너 잠시 숨김 (전기충전소 에러 떠도 검색창 가리지 않도록)
             // if (_stationError != null) _buildErrorBanner(),
-            if (!_isInitialLoading && _totalMappableStationCount > 0)
+            if (!_isInitialLoading && _totalMappableMarkerCount > 0)
               _buildStationsBadge(),
             if (!_isInitialLoading &&
                 _stationError == null &&
-                _totalMappableStationCount == 0)
+                _totalMappableMarkerCount == 0)
               _buildInfoBanner(
                 icon: Icons.info_outline,
-                message: '표시할 충전소 위치 데이터가 없습니다.',
+                message: '표시할 충전/주차 위치 데이터가 없습니다.',
               ),
           ],
         ),
@@ -513,7 +541,7 @@ class _MapScreenState extends State<MapScreen> {
                 ),
                 SizedBox(width: 12),
                 Text(
-                  '충전소 위치 불러오는 중...',
+                  '위치 불러오는 중... (충전/주차)',
                   style: TextStyle(fontWeight: FontWeight.w600),
                 ),
               ],
@@ -596,7 +624,7 @@ class _MapScreenState extends State<MapScreen> {
       left: 16,
       child: Chip(
         avatar: const Icon(Icons.ev_station, size: 16, color: Colors.white),
-        label: Text('표시 중: $_totalMappableStationCount개 충전소(H2+EV)'),
+        label: Text('표시 중: $_totalMappableMarkerCount개 위치(H2/EV/주차)'),
         backgroundColor: Colors.black.withOpacity(0.7),
         labelStyle: const TextStyle(color: Colors.white),
         padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -625,6 +653,17 @@ class _MapScreenState extends State<MapScreen> {
     );
   }
 
+  String _formatParkingSpaces(ParkingLot lot) {
+    final hasAvailable = lot.availableSpaces != null;
+    final hasTotal = lot.totalSpaces != null;
+    if (hasAvailable || hasTotal) {
+      final available = hasAvailable ? lot.availableSpaces.toString() : '-';
+      final total = hasTotal ? lot.totalSpaces.toString() : '-';
+      return '$available / $total';
+    }
+    return '정보 없음';
+  }
+
   // --- 지도 / 마커 관련 ---
   /// 지도 준비 완료 후 컨트롤러를 보관하고 첫 렌더링을 수행한다.
   void _handleMapReady(NaverMapController controller) {
@@ -646,12 +685,14 @@ class _MapScreenState extends State<MapScreen> {
     final overlays = <NClusterableMarker>{
       ..._h2StationsWithCoordinates.map(_buildH2Marker),
       ..._evStationsWithCoordinates.map(_buildEvMarker),
+      ..._parkingLotsWithCoordinates.map(_buildParkingMarker),
     };
 
     if (overlays.isEmpty) return;
     try {
       await controller.addOverlayAll(overlays);
     } catch (error) {
+      // 네트워크 실패 후 overlay 채널이 끊긴 경우 등 예외를 무시
       debugPrint('Marker overlay add failed: $error');
     }
   }
@@ -714,17 +755,51 @@ class _MapScreenState extends State<MapScreen> {
     return marker;
   }
 
+  /// 주차장 정보를 기반으로 Naver Map 마커를 구성한다.
+  NClusterableMarker _buildParkingMarker(ParkingLot lot) {
+    final lat = lot.latitude!;
+    final lng = lot.longitude!;
+    final marker = NClusterableMarker(
+      id: 'parking_marker_${lot.id}_$lat$lng',
+      position: NLatLng(lat, lng),
+      caption: NOverlayCaption(
+        text: '[P] ${lot.name}',
+        textSize: 12,
+        color: Colors.black,
+        haloColor: Colors.white,
+      ),
+      subCaption: NOverlayCaption(
+        text: lot.availableSpaces != null && lot.totalSpaces != null
+            ? '잔여 ${lot.availableSpaces}/${lot.totalSpaces}'
+            : (lot.availableSpaces != null
+                ? '잔여 ${lot.availableSpaces}'
+                : '주차장'),
+        textSize: 11,
+        color: Colors.deepOrange,
+        haloColor: Colors.white,
+      ),
+      iconTintColor: _parkingMarkerBaseColor,
+    );
+
+    marker.setOnTapListener((overlay) {
+      _showParkingLotBottomSheet(lot);
+    });
+    return marker;
+  }
+
   // --- 데이터 로딩 ---
   /// 수소/전기 충전소를 동시에 불러오고 로딩 및 오류 상태를 초기화한다.
   Future<void> _loadAllStations() async {
     setState(() {
       _isLoadingH2Stations = true;
       _isLoadingEvStations = true;
+      _isLoadingParkingLots = true;
       _stationError = null;
     });
     await Future.wait([
       _loadH2Stations(),
       _loadEvStations(),
+      _loadParkingLotsAll(),
     ]);
   }
 
@@ -772,6 +847,31 @@ class _MapScreenState extends State<MapScreen> {
     }
   }
 
+  /// 주차장 전체 목록을 불러온다.
+  Future<void> _loadParkingLotsAll() async {
+    setState(() {
+      _isLoadingParkingLots = true;
+      _stationError = null;
+    });
+
+    try {
+      final lots = await parkingLotApi.fetchAll(size: 1000);
+      if (!mounted) return;
+      setState(() {
+        _parkingLots = lots;
+        _isLoadingParkingLots = false;
+      });
+      unawaited(_renderStationMarkers());
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _isLoadingParkingLots = false;
+        _stationError ??= '주차장 데이터를 불러오지 못했습니다.';
+      });
+      debugPrint('Parking lot fetch failed: $error');
+    }
+  }
+
   // --- 상태 색상 매핑 ---
   /// 수소 충전소 운영 상태 텍스트를 컬러로 매핑한다.
   Color _h2StatusColor(String statusName) {
@@ -804,6 +904,7 @@ class _MapScreenState extends State<MapScreen> {
         return Colors.blueGrey;
     }
   }
+
 
   // --- ⭐ 즐겨찾기 서버 동기화(방법 1) ---
   Future<void> _syncFavoritesFromServer() async {
@@ -951,6 +1052,48 @@ class _MapScreenState extends State<MapScreen> {
     );
   }
 
+  /// 주차장 마커를 탭했을 때 상세 정보를 보여주는 바텀 시트.
+  void _showParkingLotBottomSheet(ParkingLot lot) {
+    if (!mounted) return;
+
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) {
+        return Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                lot.name,
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 8),
+              _buildStationField('주소', lot.address ?? '주소 정보 없음'),
+              _buildStationField('주차 가능', _formatParkingSpaces(lot)),
+              _buildStationField(
+                '요금',
+                lot.feeInfo?.isNotEmpty == true
+                    ? lot.feeInfo!
+                    : '요금 정보 없음',
+              ),
+              _buildStationField(
+                '문의',
+                lot.tel?.isNotEmpty == true
+                    ? lot.tel!
+                    : '연락처 정보 없음',
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   /// 전기 충전소 바텀 시트.
   void _showEvStationBottomSheet(EVStation station) {
     if (!mounted) return;
@@ -1086,7 +1229,7 @@ class _MapScreenState extends State<MapScreen> {
   }
 
   /// 새로고침 FAB - 서버 상태를 다시 요청한다.
-  void _onCenterButtonPressed() {
-    _loadAllStations();
+  void _onCenterButtonPressed() async {
+    await _loadAllStations();
   }
 }

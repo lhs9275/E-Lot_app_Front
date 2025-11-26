@@ -8,6 +8,7 @@ import 'package:kakao_flutter_sdk_user/kakao_flutter_sdk_user.dart';
 import 'screens/welcom.dart';
 import 'services/h2_station_api_service.dart';
 import 'services/ev_station_api_service.dart';
+import 'services/parking_lot_api_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -37,6 +38,8 @@ Future<void> main() async {
   configureH2StationApi(baseUrl: _resolveH2BaseUrl());
   // EV API는 로컬 개발용 별도 베이스 URL 사용(.env에 EV_API_BASE_URL 설정)
   configureEVStationApi(baseUrl: _resolveEvBaseUrl());
+  // Parking API 구성 (미설정 시 EV와 동일 서버로 시도)
+  configureParkingLotApi(baseUrl: _resolveParkingBaseUrl());
 
   // 4. 네이버 지도 SDK 초기화
   await _initializeNaverMap();
@@ -80,6 +83,20 @@ String _resolveEvBaseUrl() {
     const fallback = 'http://10.0.2.2:8080';
     debugPrint(
       '[EV API] EV_API_BASE_URL가 설정되지 않아 기본값($fallback)을 사용합니다. 로컬 서버 주소를 .env에 설정하세요.',
+    );
+    return fallback;
+  }
+  return value;
+}
+
+String _resolveParkingBaseUrl() {
+  final value = dotenv.env['PARKING_API_BASE_URL']?.trim();
+  if (value == null || value.isEmpty) {
+    final evBase = dotenv.env['EV_API_BASE_URL']?.trim();
+    final fallback =
+        (evBase == null || evBase.isEmpty) ? 'http://10.0.2.2:8080' : evBase;
+    debugPrint(
+      '[Parking API] PARKING_API_BASE_URL가 없어 EV_API_BASE_URL 또는 기본값($fallback)을 사용합니다.',
     );
     return fallback;
   }
