@@ -120,6 +120,10 @@ class _MapScreenState extends State<MapScreen> {
   /// ⭐ H2만 15초마다 자동 새로고침용 타이머
   Timer? _h2AutoRefreshTimer;
 
+  /// 💡 지도 마커 색상 (유형 구분)
+  static const Color _h2MarkerBaseColor = Color(0xFF2563EB); // 파란색 톤
+  static const Color _evMarkerBaseColor = Color(0xFF10B981); // 초록색 톤
+
   // --- 계산용 getter 들 ---
   Iterable<H2Station> get _h2StationsWithCoordinates => _h2Stations.where(
         (station) => station.latitude != null && station.longitude != null,
@@ -645,23 +649,34 @@ class _MapScreenState extends State<MapScreen> {
     };
 
     if (overlays.isEmpty) return;
-    await controller.addOverlayAll(overlays);
+    try {
+      await controller.addOverlayAll(overlays);
+    } catch (error) {
+      debugPrint('Marker overlay add failed: $error');
+    }
   }
 
   /// 수소 충전소 데이터를 기반으로 Naver Map 마커를 구성한다.
   NClusterableMarker _buildH2Marker(H2Station station) {
     final lat = station.latitude!;
     final lng = station.longitude!;
+    final statusColor = _h2StatusColor(station.statusName);
     final marker = NClusterableMarker(
       id: 'h2_marker_${station.stationId}_$lat$lng',
       position: NLatLng(lat, lng),
       caption: NOverlayCaption(
-        text: station.stationName,
+        text: '[H2] ${station.stationName}',
         textSize: 12,
         color: Colors.black,
         haloColor: Colors.white,
       ),
-      iconTintColor: _h2StatusColor(station.statusName),
+      subCaption: NOverlayCaption(
+        text: station.statusName,
+        textSize: 11,
+        color: statusColor,
+        haloColor: Colors.white,
+      ),
+      iconTintColor: _h2MarkerBaseColor,
     );
 
     marker.setOnTapListener((overlay) {
@@ -674,16 +689,23 @@ class _MapScreenState extends State<MapScreen> {
   NClusterableMarker _buildEvMarker(EVStation station) {
     final lat = station.latitude!;
     final lng = station.longitude!;
+    final statusColor = _evStatusColor(station.statusLabel);
     final marker = NClusterableMarker(
       id: 'ev_marker_${station.stationId}_$lat$lng',
       position: NLatLng(lat, lng),
       caption: NOverlayCaption(
-        text: station.stationName,
+        text: '[EV] ${station.stationName}',
         textSize: 12,
         color: Colors.black,
         haloColor: Colors.white,
       ),
-      iconTintColor: _evStatusColor(station.statusLabel),
+      subCaption: NOverlayCaption(
+        text: station.statusLabel,
+        textSize: 11,
+        color: statusColor,
+        haloColor: Colors.white,
+      ),
+      iconTintColor: _evMarkerBaseColor,
     );
 
     marker.setOnTapListener((overlay) {

@@ -8,6 +8,7 @@ import 'package:http/http.dart' as http;
 import 'package:psp2_fn/auth/token_storage.dart';
 import 'favorite.dart'; // ⭐ 즐겨찾기 페이지
 import 'bottom_navbar.dart'; // ✅ 공통 하단 네비게이션 바
+import 'map.dart';
 
 class MyPageScreen extends StatefulWidget {
   const MyPageScreen({super.key});
@@ -87,6 +88,17 @@ class _MyPageScreenState extends State<MyPageScreen> {
     );
   }
 
+  void _handleBack(BuildContext context) {
+    final navigator = Navigator.of(context);
+    if (navigator.canPop()) {
+      navigator.pop();
+    } else {
+      navigator.pushReplacement(
+        MaterialPageRoute(builder: (_) => const MapScreen()),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
@@ -101,7 +113,7 @@ class _MyPageScreenState extends State<MyPageScreen> {
         backgroundColor: const Color(0xFFF5F5F7),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
-          onPressed: () => Navigator.maybePop(context),
+          onPressed: () => _handleBack(context),
           tooltip: '뒤로',
         ),
       ),
@@ -251,7 +263,7 @@ class _MyPageScreenState extends State<MyPageScreen> {
       ),
 
       /// ✅ 하단 네비게이션 바
-      bottomNavigationBar: const MainBottomNavBar(currentIndex: 2),
+      bottomNavigationBar: const MainBottomNavBar(currentIndex: 3),
     );
   }
 }

@@ -43,8 +43,8 @@ class MainBottomNavBar extends StatelessWidget {
         return;
     }
 
-    // 🔁 탭 이동: 현재 페이지를 새 페이지로 교체
-    Navigator.of(context).push(
+    // 🔁 탭 이동: 스택을 쌓지 않고 현재 페이지를 대체
+    Navigator.of(context).pushReplacement(
       MaterialPageRoute(builder: (_) => target),
     );
   }

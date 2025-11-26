@@ -4,6 +4,8 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:psp2_fn/auth/token_storage.dart';
+import 'bottom_navbar.dart';
+import 'map.dart';
 
 /// 즐겨찾기 아이템 모델 (stationId + stationName만 사용)
 class FavoriteItem {
@@ -125,6 +127,17 @@ class _FavoritesPageState extends State<FavoritesPage> {
         _isLoading = false;
         _error = '오류가 발생했습니다: $e';
       });
+    }
+  }
+
+  void _handleBack(BuildContext context) {
+    final navigator = Navigator.of(context);
+    if (navigator.canPop()) {
+      navigator.pop();
+    } else {
+      navigator.pushReplacement(
+        MaterialPageRoute(builder: (_) => const MapScreen()),
+      );
     }
   }
 
@@ -255,7 +268,7 @@ class _FavoritesPageState extends State<FavoritesPage> {
         appBar: AppBar(
           leading: IconButton(
             icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
-            onPressed: () => Navigator.maybePop(context),
+            onPressed: () => _handleBack(context),
             tooltip: '뒤로',
           ),
           title: const Text('즐겨찾기'),
@@ -269,6 +282,7 @@ class _FavoritesPageState extends State<FavoritesPage> {
           ],
         ),
         body: body,
+        bottomNavigationBar: const MainBottomNavBar(currentIndex: 2),
       ),
     );
   }
