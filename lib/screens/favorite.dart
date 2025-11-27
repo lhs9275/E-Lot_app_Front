@@ -1,32 +1,21 @@
 // lib/screens/favorites_page.dart
-import 'package:flutter/material.dart';
+import 'dart:convert';
 
-/// 즐겨찾기 아이템 모델
+import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+import 'package:psp2_fn/auth/token_storage.dart';
+import 'bottom_navbar.dart';
+import 'map.dart';
+
+/// 즐겨찾기 아이템 모델 (stationId + stationName만 사용)
 class FavoriteItem {
-  final String id; // Dismissible 키용
-  final String name;
-  final String? address;
-  final String? thumbnailUrl;
+  final String id; // stationId
+  final String name; // stationName
 
   const FavoriteItem({
     required this.id,
     required this.name,
-    this.address,
-    this.thumbnailUrl,
   });
-
-  FavoriteItem copyWith({
-    String? id,
-    String? name,
-    String? address,
-    String? thumbnailUrl,
-  }) =>
-      FavoriteItem(
-        id: id ?? this.id,
-        name: name ?? this.name,
-        address: address ?? this.address,
-        thumbnailUrl: thumbnailUrl ?? this.thumbnailUrl,
-      );
 }
 
 class FavoritesPage extends StatefulWidget {
@@ -37,14 +26,123 @@ class FavoritesPage extends StatefulWidget {
 }
 
 class _FavoritesPageState extends State<FavoritesPage> {
+  /// ✅ 백엔드 기본 주소 (MapScreen과 동일)
+  static const String _backendBaseUrl = 'https://clos21.kr';
+
   final List<FavoriteItem> _items = [];
+
+  /// 로딩 / 에러 상태
+  bool _isLoading = false;
+  String? _error;
 
   /// ✅ 이 페이지 전용 스캐폴드 메신저 (루트와 분리)
   final GlobalKey<ScaffoldMessengerState> _messengerKey =
   GlobalKey<ScaffoldMessengerState>();
 
-  /// ✅ FAB이 안 움직이는 떠있는 스낵바
-  void _showStatus(String message, {SnackBarAction? action}) {
+  @override
+  void initState() {
+    super.initState();
+    _loadFavorites(); // 페이지 진입 시 즐겨찾기 목록 불러오기
+  }
+
+  /// ✅ 백엔드에서 즐겨찾기 목록 불러오기
+  Future<void> _loadFavorites() async {
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+
+    // 토큰 가져오기
+    String? accessToken = await TokenStorage.getAccessToken();
+    if (accessToken == null || accessToken.isEmpty) {
+      setState(() {
+        _isLoading = false;
+        _error = '로그인 후 즐겨찾기 목록을 볼 수 있습니다.';
+      });
+      return;
+    }
+
+    try {
+      // 🔹 실제 컨트롤러: @GetMapping("/me/favorites/stations")
+      final url = Uri.parse('$_backendBaseUrl/api/me/favorites/stations');
+      final res = await http.get(
+        url,
+        headers: {
+          'Authorization': 'Bearer $accessToken',
+        },
+      );
+
+      debugPrint('⭐ 즐겨찾기 목록 GET 결과: ${res.statusCode} ${res.body}');
+
+      if (res.statusCode == 200) {
+        final body = jsonDecode(res.body);
+
+        // FavoriteStationController에서 List<FavoriteStationDto> 를 그대로 반환하므로
+        // body 자체가 List 일 확률이 높음
+        if (body is! List) {
+          setState(() {
+            _isLoading = false;
+            _error = '서버 응답 형식이 올바르지 않습니다.';
+          });
+          return;
+        }
+
+        final list = body as List<dynamic>;
+
+        final items = list.map<FavoriteItem>((raw) {
+          final map = raw as Map<String, dynamic>;
+
+          // ⚠️ FavoriteStationDto 필드에 맞게 키 이름 조정
+          //    (stationId, stationName 이라고 가정)
+          final stationId = (map['stationId'] ?? map['id'] ?? '').toString();
+          final name =
+          (map['stationName'] ?? map['name'] ?? '이름 없음').toString();
+
+          return FavoriteItem(
+            id: stationId,
+            name: name,
+          );
+        }).toList();
+
+        setState(() {
+          _items
+            ..clear()
+            ..addAll(items);
+          _isLoading = false;
+        });
+      } else if (res.statusCode == 401) {
+        setState(() {
+          _isLoading = false;
+          _error = '로그인이 만료되었습니다. 다시 로그인해주세요.';
+        });
+      } else {
+        setState(() {
+          _isLoading = false;
+          _error = '즐겨찾기 목록을 불러오지 못했습니다. (${res.statusCode})';
+        });
+      }
+    } catch (e) {
+      debugPrint('❌ 즐겨찾기 목록 불러오는 중 오류: $e');
+      setState(() {
+        _isLoading = false;
+        _error = '오류가 발생했습니다: $e';
+      });
+    }
+  }
+
+  void _handleBack(BuildContext context) {
+    final navigator = Navigator.of(context);
+    if (navigator.canPop()) {
+      navigator.pop();
+    } else {
+      navigator.pushReplacement(
+        MaterialPageRoute(builder: (_) => const MapScreen()),
+      );
+    }
+  }
+
+  /// ✅ 이 페이지 전용 떠있는 스낵바
+  void _showStatus(String message) {
     final bottomSafe = MediaQuery.of(context).viewPadding.bottom;
     _messengerKey.currentState?.hideCurrentSnackBar();
     _messengerKey.currentState?.showSnackBar(
@@ -54,126 +152,44 @@ class _FavoritesPageState extends State<FavoritesPage> {
         margin: EdgeInsets.fromLTRB(16, 0, 16, bottomSafe + 20),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         duration: const Duration(seconds: 2),
-        action: action,
       ),
     );
   }
 
-  // 추가 다이얼로그
-  Future<void> _addFavoriteDialog() async {
-    final nameCtrl = TextEditingController();
-    final addrCtrl = TextEditingController();
-    final thumbCtrl = TextEditingController();
-    final cs = Theme.of(context).colorScheme;
+  /// ✅ 휴지통 / 스와이프 시: 서버에 DELETE 날리고, 성공하면 목록에서 제거
+  Future<void> _deleteAt(int index) async {
+    final item = _items[index];
 
-    final ok = await showModalBottomSheet<bool>(
-      context: context,
-      isScrollControlled: true,
-      showDragHandle: true,
-      backgroundColor: Theme.of(context).colorScheme.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      builder: (ctx) {
-        final insets = MediaQuery.of(ctx).viewInsets;
-        return Padding(
-          padding: EdgeInsets.fromLTRB(16, 8, 16, 16 + insets.bottom),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                '즐겨찾기 추가',
-                style: Theme.of(ctx)
-                    .textTheme
-                    .titleLarge
-                    ?.copyWith(fontWeight: FontWeight.w700),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: nameCtrl,
-                decoration: InputDecoration(
-                  labelText: '이름 (필수)',
-                  border: const OutlineInputBorder(),
-                  focusedBorder: OutlineInputBorder(
-                    borderSide: BorderSide(color: cs.primary),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 10),
-              TextField(
-                controller: addrCtrl,
-                decoration: const InputDecoration(
-                  labelText: '주소 (선택)',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 10),
-              TextField(
-                controller: thumbCtrl,
-                decoration: const InputDecoration(
-                  labelText: '썸네일 URL (선택)',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 14),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: () => Navigator.pop(ctx, false),
-                      child: const Text('취소'),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: FilledButton(
-                      onPressed: () {
-                        if (nameCtrl.text.trim().isEmpty) return;
-                        Navigator.pop(ctx, true);
-                      },
-                      child: const Text('추가'),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        );
-      },
-    );
-
-    if (ok == true && mounted) {
-      setState(() {
-        _items.add(
-          FavoriteItem(
-            id: DateTime.now().microsecondsSinceEpoch.toString(),
-            name: nameCtrl.text.trim(),
-            address:
-            addrCtrl.text.trim().isEmpty ? null : addrCtrl.text.trim(),
-            thumbnailUrl:
-            thumbCtrl.text.trim().isEmpty ? null : thumbCtrl.text.trim(),
-          ),
-        );
-      });
-      _showStatus('즐겨찾기에 추가되었습니다.');
+    String? accessToken = await TokenStorage.getAccessToken();
+    if (accessToken == null || accessToken.isEmpty) {
+      _showStatus('로그인 후 삭제할 수 있습니다.');
+      return;
     }
-  }
 
-  void _deleteAt(int index) {
-    final removed = _items.removeAt(index);
-    setState(() {});
-    _showStatus(
-      '"${removed.name}" 을(를) 삭제했습니다.',
-      action: SnackBarAction(
-        label: '되돌리기',
-        onPressed: () {
-          setState(() {
-            _items.insert(index, removed);
-          });
+    try {
+      final url = Uri.parse(
+          '$_backendBaseUrl/api/stations/${item.id}/favorite'); // 컨트롤러와 동일
+      final res = await http.delete(
+        url,
+        headers: {
+          'Authorization': 'Bearer $accessToken',
         },
-      ),
-    );
+      );
+
+      debugPrint('🗑 즐겨찾기 삭제 결과: ${res.statusCode} ${res.body}');
+
+      if (res.statusCode == 200 || res.statusCode == 204) {
+        setState(() {
+          _items.removeAt(index);
+        });
+        _showStatus('"${item.name}" 즐겨찾기에서 제거되었습니다.');
+      } else {
+        _showStatus('삭제 실패 (${res.statusCode}) 다시 시도해주세요.');
+      }
+    } catch (e) {
+      debugPrint('❌ 즐겨찾기 삭제 중 오류: $e');
+      _showStatus('삭제 중 오류가 발생했습니다.');
+    }
   }
 
   @override
@@ -187,21 +203,39 @@ class _FavoritesPageState extends State<FavoritesPage> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
 
-    return ScaffoldMessenger( // ✅ 루트와 분리된 Messenger
-      key: _messengerKey,
-      child: Scaffold(
-        appBar: AppBar(
-          leading: IconButton(
-            icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
-            onPressed: () => Navigator.maybePop(context),
-            tooltip: '뒤로',
+    Widget body;
+    if (_isLoading) {
+      body = const Center(
+        child: CircularProgressIndicator(),
+      );
+    } else if (_error != null) {
+      body = Center(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                _error!,
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 12),
+              FilledButton.icon(
+                onPressed: _loadFavorites,
+                icon: const Icon(Icons.refresh),
+                label: const Text('다시 시도'),
+              ),
+            ],
           ),
-          title: const Text('즐겨찾기'),
-          centerTitle: true,
         ),
-        body: _items.isEmpty
-            ? const _EmptyState()
-            : ListView.separated(
+      );
+    } else if (_items.isEmpty) {
+      body = const _EmptyState();
+    } else {
+      body = RefreshIndicator(
+        onRefresh: _loadFavorites,
+        child: ListView.separated(
+          physics: const AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.symmetric(vertical: 8),
           itemCount: _items.length,
           separatorBuilder: (_, __) =>
@@ -220,22 +254,41 @@ class _FavoritesPageState extends State<FavoritesPage> {
               onDismissed: (_) => _deleteAt(i),
               child: _FavoriteTile(
                 item: item,
-                onDelete: () => _deleteAt(i),
+                onDelete: () => _deleteAt(i), // 휴지통 버튼도 같은 로직 사용
               ),
             );
           },
         ),
-        floatingActionButton: FloatingActionButton.extended(
-          onPressed: _addFavoriteDialog,
-          icon: const Icon(Icons.add_rounded),
-          label: const Text('추가'),
+      );
+    }
+
+    return ScaffoldMessenger(
+      key: _messengerKey,
+      child: Scaffold(
+        appBar: AppBar(
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
+            onPressed: () => _handleBack(context),
+            tooltip: '뒤로',
+          ),
+          title: const Text('즐겨찾기'),
+          centerTitle: true,
+          actions: [
+            IconButton(
+              tooltip: '새로고침',
+              icon: const Icon(Icons.refresh),
+              onPressed: _loadFavorites,
+            ),
+          ],
         ),
+        body: body,
+        bottomNavigationBar: const MainBottomNavBar(currentIndex: 2),
       ),
     );
   }
 }
 
-/// ✅ 빈 상태 (아이콘 → 내 이미지로 교체)
+/// ✅ 빈 상태
 class _EmptyState extends StatelessWidget {
   const _EmptyState();
 
@@ -260,17 +313,10 @@ class _EmptyState extends StatelessWidget {
               textAlign: TextAlign.center,
             ),
           ),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(12),
-            child: Image.asset(
-              'lib/assets/icons/app_icon/bookmark_icon.png', // 네 이미지 경로
-              width: 72,
-              height: 72,
-              fit: BoxFit.contain,
-              errorBuilder: (_, __, ___) {
-                return Icon(Icons.map_rounded, size: 56, color: cs.onSurface);
-              },
-            ),
+          Icon(
+            Icons.bookmark_border_rounded,
+            size: 56,
+            color: cs.onSurfaceVariant,
           ),
         ],
       ),
@@ -278,7 +324,7 @@ class _EmptyState extends StatelessWidget {
   }
 }
 
-/// 한 줄 타일 (썸네일 없는 경우 기존 아이콘 유지)
+/// 한 줄 타일 (stationName만 표시) - 카드형 디자인
 class _FavoriteTile extends StatelessWidget {
   const _FavoriteTile({required this.item, required this.onDelete});
   final FavoriteItem item;
@@ -289,47 +335,55 @@ class _FavoriteTile extends StatelessWidget {
     final txt = Theme.of(context).textTheme;
     final cs = Theme.of(context).colorScheme;
 
-    return ListTile(
-      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-      leading: ClipRRect(
-        borderRadius: BorderRadius.circular(8),
-        child: item.thumbnailUrl == null
-            ? Container(
-          width: 54,
-          height: 54,
-          color: cs.surfaceVariant.withOpacity(.4),
-          child: Icon(Icons.local_parking_rounded,
-              color: cs.onSurfaceVariant),
-        )
-            : Image.network(
-          item.thumbnailUrl!,
-          width: 54,
-          height: 54,
-          fit: BoxFit.cover,
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(18),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.06),
+              blurRadius: 14,
+              offset: const Offset(0, 6),
+            ),
+          ],
+        ),
+        child: ListTile(
+          contentPadding:
+          const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          leading: CircleAvatar(
+            radius: 18,
+            backgroundColor: cs.surfaceVariant,
+            child: Icon(
+              Icons.ev_station_rounded,
+              color: cs.onSurfaceVariant,
+            ),
+          ),
+          title: Text(
+            item.name,
+            style: txt.titleMedium?.copyWith(
+              fontSize: 17,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          subtitle: Text(
+            'ID: ${item.id}',
+            style: txt.bodySmall?.copyWith(
+              color: cs.onSurfaceVariant,
+              fontSize: 12,
+            ),
+          ),
+          trailing: IconButton(
+            tooltip: '삭제',
+            icon: const Icon(Icons.delete_outline_rounded),
+            onPressed: onDelete,
+          ),
+          onTap: () {
+            // TODO: 나중에 이 stationId로 지도 이동 / 상세 연결 가능
+          },
         ),
       ),
-      title: Text(
-        item.name,
-        style:
-        txt.titleMedium?.copyWith(fontSize: 17, fontWeight: FontWeight.w600),
-      ),
-      subtitle: item.address == null
-          ? null
-          : Text(
-        item.address!,
-        style: txt.bodySmall?.copyWith(
-          color: cs.onSurfaceVariant,
-          fontSize: 13.5,
-        ),
-      ),
-      trailing: IconButton(
-        tooltip: '삭제',
-        icon: const Icon(Icons.delete_outline_rounded),
-        onPressed: onDelete,
-      ),
-      onTap: () {
-        // TODO: 상세 페이지로 이동 연결
-      },
     );
   }
 }
