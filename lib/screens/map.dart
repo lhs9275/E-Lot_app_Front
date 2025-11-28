@@ -256,15 +256,18 @@ class _MapScreenState extends State<MapScreen> {
           ],
         ),
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _isInitialLoading ? null : _onCenterButtonPressed,
-        child: _isInitialLoading
-            ? const SizedBox(
-          width: 20,
-          height: 20,
-          child: CircularProgressIndicator(strokeWidth: 2.4),
-        )
-            : const Icon(Icons.refresh),
+      floatingActionButton: Transform.translate(
+        offset: const Offset(155, -65.0),
+        child: FloatingActionButton(
+          onPressed: _isInitialLoading ? null : _onCenterButtonPressed,
+          child: _isInitialLoading
+              ? const SizedBox(
+            width: 20,
+            height: 20,
+            child: CircularProgressIndicator(strokeWidth: 2.4),
+          )
+              : const Icon(Icons.refresh),
+        ),
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
 
