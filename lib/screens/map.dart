@@ -640,7 +640,7 @@ class _MapScreenState extends State<MapScreen> {
         children: [
           Text(
             '$label: ',
-            style: const TextStyle(fontWeight: FontWeight.w600),
+            style: const TextStyle(fontWeight: FontWeight.w60 0),
           ),
           Expanded(
             child: Text(
