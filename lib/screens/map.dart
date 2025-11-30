@@ -212,7 +212,7 @@ class _MapScreenState extends State<MapScreen> {
                 locationButtonEnable: true,
               ),
 
-              /// ⭐ 클러스터 옵션 추가 부분
+              /// ⭐ 클러스터 옵션 (유리구슬 느낌)
               clusterOptions: NaverMapClusteringOptions(
                 mergeStrategy: const NClusterMergeStrategy(
                   willMergedScreenDistance: {
@@ -220,14 +220,25 @@ class _MapScreenState extends State<MapScreen> {
                   },
                 ),
                 clusterMarkerBuilder: (info, clusterMarker) {
-                  clusterMarker.setIsFlat(true);
-                  clusterMarker.setCaption(
-                    NOverlayCaption(
-                      text: info.size.toString(),
-                      color: Colors.white,
-                      haloColor: Colors.blueAccent,
-                    ),
-                  );
+                  final count = info.size;
+
+                  clusterMarker
+                    ..setIsFlat(false) // 살짝 입체감 유지
+                    ..setSize(const Size(50, 50)) // 조금 크게
+                    ..setAlpha(1.0) // 🔹 반투명
+                    ..setIconTintColor(
+                      const Color(0xFF4FC3F7), // 푸른빛 아이콘 틴트
+                    )
+                    ..setCaption(
+                      NOverlayCaption(
+                        text: count.toString(),
+                        textSize: 14,
+                        color: Colors.black, // 🔹 안쪽 숫자는 검은색
+                        haloColor: const Color(
+                          0xAAE0F7FA,
+                        ), // 살짝 푸른 하이라이트 (유리 느낌)
+                      ),
+                    );
                 },
               ),
               onMapReady: _handleMapReady,
@@ -256,15 +267,18 @@ class _MapScreenState extends State<MapScreen> {
           ],
         ),
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _isInitialLoading ? null : _onCenterButtonPressed,
-        child: _isInitialLoading
-            ? const SizedBox(
-          width: 20,
-          height: 20,
-          child: CircularProgressIndicator(strokeWidth: 2.4),
-        )
-            : const Icon(Icons.refresh),
+      floatingActionButton: Transform.translate(
+        offset: const Offset(155, -65.0),
+        child: FloatingActionButton(
+          onPressed: _isInitialLoading ? null : _onCenterButtonPressed,
+          child: _isInitialLoading
+              ? const SizedBox(
+            width: 20,
+            height: 20,
+            child: CircularProgressIndicator(strokeWidth: 2.4),
+          )
+              : const Icon(Icons.refresh),
+        ),
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
 
@@ -624,7 +638,8 @@ class _MapScreenState extends State<MapScreen> {
       left: 16,
       child: Chip(
         avatar: const Icon(Icons.ev_station, size: 16, color: Colors.white),
-        label: Text('표시 중: $_totalMappableMarkerCount개 위치(H2/EV/주차)'),
+        label:
+        Text('표시 중: $_totalMappableMarkerCount개 위치(H2/EV/주차)'),
         backgroundColor: Colors.black.withOpacity(0.7),
         labelStyle: const TextStyle(color: Colors.white),
         padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -640,7 +655,7 @@ class _MapScreenState extends State<MapScreen> {
         children: [
           Text(
             '$label: ',
-            style: const TextStyle(fontWeight: FontWeight.w60 0),
+            style: const TextStyle(fontWeight: FontWeight.w600),
           ),
           Expanded(
             child: Text(
@@ -687,6 +702,9 @@ class _MapScreenState extends State<MapScreen> {
       ..._evStationsWithCoordinates.map(_buildEvMarker),
       ..._parkingLotsWithCoordinates.map(_buildParkingMarker),
     };
+
+    debugPrint(
+        '🎯 Render markers: H2=${_h2StationsWithCoordinates.length}, EV=${_evStationsWithCoordinates.length}, P=${_parkingLotsWithCoordinates.length}');
 
     if (overlays.isEmpty) return;
     try {
@@ -772,8 +790,8 @@ class _MapScreenState extends State<MapScreen> {
         text: lot.availableSpaces != null && lot.totalSpaces != null
             ? '잔여 ${lot.availableSpaces}/${lot.totalSpaces}'
             : (lot.availableSpaces != null
-                ? '잔여 ${lot.availableSpaces}'
-                : '주차장'),
+            ? '잔여 ${lot.availableSpaces}'
+            : '주차장'),
         textSize: 11,
         color: Colors.deepOrange,
         haloColor: Colors.white,
@@ -856,6 +874,9 @@ class _MapScreenState extends State<MapScreen> {
 
     try {
       final lots = await parkingLotApi.fetchAll(size: 1000);
+      final withCoords = lots
+          .where((e) => e.latitude != null && e.longitude != null)
+          .length;
       if (!mounted) return;
       setState(() {
         _parkingLots = lots;
@@ -904,7 +925,6 @@ class _MapScreenState extends State<MapScreen> {
         return Colors.blueGrey;
     }
   }
-
 
   // --- ⭐ 즐겨찾기 서버 동기화(방법 1) ---
   Future<void> _syncFavoritesFromServer() async {
@@ -1083,9 +1103,7 @@ class _MapScreenState extends State<MapScreen> {
               ),
               _buildStationField(
                 '문의',
-                lot.tel?.isNotEmpty == true
-                    ? lot.tel!
-                    : '연락처 정보 없음',
+                lot.tel?.isNotEmpty == true ? lot.tel! : '연락처 정보 없음',
               ),
             ],
           ),
