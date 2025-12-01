@@ -115,11 +115,17 @@ class _MapScreenState extends State<MapScreen> {
   bool _isLoadingParkingLots = true;
   String? _stationError;
 
+
   // 검색창 컨트롤러
   final TextEditingController _searchController = TextEditingController();
 
   // 🔍 자동완성 후보 목록
   List<_SearchCandidate> _searchResults = [];
+
+  // ⭐ 타입별 표시 필터 (기본: 모두 ON)
+  bool _showH2 = true;
+  bool _showEv = true;
+  bool _showParking = true;
 
   // 시작 위치 (예: 서울시청)
   final NLatLng _initialTarget = const NLatLng(37.5666, 126.9790);
@@ -145,26 +151,36 @@ class _MapScreenState extends State<MapScreen> {
   static const Color _parkingMarkerBaseColor = Color(0xFFF59E0B); // 주차장 주황
 
   // --- 계산용 getter 들 ---
-  Iterable<H2Station> get _h2StationsWithCoordinates => _h2Stations.where(
-        (station) => station.latitude != null && station.longitude != null,
-  );
+  Iterable<H2Station> get _h2StationsWithCoordinates =>
+      _h2Stations.where((station) =>
+      station.latitude != null && station.longitude != null);
 
-  Iterable<EVStation> get _evStationsWithCoordinates => _evStations.where(
-        (station) => station.latitude != null && station.longitude != null,
-  );
+  Iterable<EVStation> get _evStationsWithCoordinates =>
+      _evStations.where(
+              (station) => station.latitude != null && station.longitude != null);
 
   Iterable<ParkingLot> get _parkingLotsWithCoordinates =>
       _parkingLots.where(
-            (lot) => lot.latitude != null && lot.longitude != null,
-      );
+              (lot) => lot.latitude != null && lot.longitude != null);
 
-  int get _totalMappableMarkerCount =>
-      _h2StationsWithCoordinates.length +
-          _evStationsWithCoordinates.length +
-          _parkingLotsWithCoordinates.length;
+  int get _totalMappableMarkerCount {
+    int count = 0;
+    if (_showH2) {
+      count += _h2StationsWithCoordinates.length;
+    }
+    if (_showEv) {
+      count += _evStationsWithCoordinates.length;
+    }
+    if (_showParking) {
+      count += _parkingLotsWithCoordinates.length;
+    }
+    return count;
+  }
 
   bool get _isInitialLoading =>
-      _isLoadingH2Stations || _isLoadingEvStations || _isLoadingParkingLots;
+      _isLoadingH2Stations ||
+          _isLoadingEvStations ||
+          _isLoadingParkingLots;
 
   // --- 라이프사이클 ---
   @override
@@ -246,10 +262,17 @@ class _MapScreenState extends State<MapScreen> {
 
             /// 🔍 상단 검색창 + 자동완성 리스트
             Positioned(
-              top: 35, // ⬅️ 살짝 아래로 내린 위치
+              top: 45, // ⬅️ 살짝 아래로 내린 위치
               left: 16,
               right: 16,
               child: _buildSearchBar(),
+            ),
+
+            /// ⭐ H2 / EV / 주차 필터 토글 바
+            Positioned(
+              top: 95, // 검색창 아래
+              left: 16,
+              child: _buildFilterBar(),
             ),
 
             if (_isInitialLoading) _buildLoadingBanner(),
@@ -634,7 +657,7 @@ class _MapScreenState extends State<MapScreen> {
   /// 현재 표시 중인 마커의 개수를 보여주는 칩.
   Widget _buildStationsBadge() {
     return Positioned(
-      top: 96, // 🔹 검색창(top:40) 아래로 더 내림
+      top: 0, // 🔹 필터 바 아래쪽 위치
       left: 16,
       child: Chip(
         avatar: const Icon(Icons.ev_station, size: 16, color: Colors.white),
@@ -643,6 +666,109 @@ class _MapScreenState extends State<MapScreen> {
         backgroundColor: Colors.black.withOpacity(0.7),
         labelStyle: const TextStyle(color: Colors.white),
         padding: const EdgeInsets.symmetric(horizontal: 12),
+      ),
+    );
+  }
+
+  /// ⭐ 지도 위 H2 / EV / 주차 필터 토글 바
+  Widget _buildFilterBar() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.96),
+        borderRadius: BorderRadius.circular(999),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.08),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _buildFilterIcon(
+            active: _showH2,
+            icon: Icons.local_gas_station,
+            color: _h2MarkerBaseColor,
+            label: 'H2',
+            onTap: () {
+              setState(() {
+                _showH2 = !_showH2;
+              });
+              unawaited(_renderStationMarkers());
+            },
+          ),
+          const SizedBox(width: 8),
+          _buildFilterIcon(
+            active: _showEv,
+            icon: Icons.ev_station,
+            color: _evMarkerBaseColor,
+            label: 'EV',
+            onTap: () {
+              setState(() {
+                _showEv = !_showEv;
+              });
+              unawaited(_renderStationMarkers());
+            },
+          ),
+          const SizedBox(width: 8),
+          _buildFilterIcon(
+            active: _showParking,
+            icon: Icons.local_parking,
+            color: _parkingMarkerBaseColor,
+            label: 'P',
+            onTap: () {
+              setState(() {
+                _showParking = !_showParking;
+              });
+              unawaited(_renderStationMarkers());
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 필터 아이콘 하나 (동그란 버튼 + 라벨)
+  Widget _buildFilterIcon({
+    required bool active,
+    required IconData icon,
+    required Color color,
+    required String label,
+    required VoidCallback onTap,
+  }) {
+    final bgColor = active ? color : Colors.grey.shade300;
+    final iconColor = active ? Colors.white : Colors.grey.shade700;
+
+    return GestureDetector(
+      onTap: onTap,
+      child: Row(
+        children: [
+          Container(
+            width: 32,
+            height: 32,
+            decoration: BoxDecoration(
+              color: bgColor,
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              icon,
+              size: 18,
+              color: iconColor,
+            ),
+          ),
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: active ? Colors.black87 : Colors.grey,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -692,28 +818,41 @@ class _MapScreenState extends State<MapScreen> {
     if (controller == null) return;
 
     try {
-      await controller.clearOverlays(type: NOverlayType.marker);
+      // 🔥 클러스터러블 마커 타입으로 지워야 함
+      await controller.clearOverlays(type: NOverlayType.clusterableMarker);
+      // 또는 완전히 싹 다 지우고 싶으면:
+      // await controller.clearOverlays();
     } catch (_) {
       // 초기 로딩 동안은 컨트롤러 정리가 실패할 수 있으므로 무시한다.
     }
 
-    final overlays = <NClusterableMarker>{
-      ..._h2StationsWithCoordinates.map(_buildH2Marker),
-      ..._evStationsWithCoordinates.map(_buildEvMarker),
-      ..._parkingLotsWithCoordinates.map(_buildParkingMarker),
-    };
+    final overlays = <NClusterableMarker>{};
+
+    if (_showH2) {
+      overlays.addAll(_h2StationsWithCoordinates.map(_buildH2Marker));
+    }
+    if (_showEv) {
+      overlays.addAll(_evStationsWithCoordinates.map(_buildEvMarker));
+    }
+    if (_showParking) {
+      overlays.addAll(_parkingLotsWithCoordinates.map(_buildParkingMarker));
+    }
 
     debugPrint(
-        '🎯 Render markers: H2=${_h2StationsWithCoordinates.length}, EV=${_evStationsWithCoordinates.length}, P=${_parkingLotsWithCoordinates.length}');
+      '🎯 Render markers (filtered): '
+          'H2=${_showH2 ? _h2StationsWithCoordinates.length : 0}, '
+          'EV=${_showEv ? _evStationsWithCoordinates.length : 0}, '
+          'P=${_showParking ? _parkingLotsWithCoordinates.length : 0}',
+    );
 
     if (overlays.isEmpty) return;
     try {
       await controller.addOverlayAll(overlays);
     } catch (error) {
-      // 네트워크 실패 후 overlay 채널이 끊긴 경우 등 예외를 무시
       debugPrint('Marker overlay add failed: $error');
     }
   }
+
 
   /// 수소 충전소 데이터를 기반으로 Naver Map 마커를 구성한다.
   NClusterableMarker _buildH2Marker(H2Station station) {
@@ -865,6 +1004,7 @@ class _MapScreenState extends State<MapScreen> {
     }
   }
 
+
   /// 주차장 전체 목록을 불러온다.
   Future<void> _loadParkingLotsAll() async {
     setState(() {
@@ -882,6 +1022,7 @@ class _MapScreenState extends State<MapScreen> {
         _parkingLots = lots;
         _isLoadingParkingLots = false;
       });
+      debugPrint('Parking lots with coords: $withCoords');
       unawaited(_renderStationMarkers());
     } catch (error) {
       if (!mounted) return;
@@ -892,6 +1033,7 @@ class _MapScreenState extends State<MapScreen> {
       debugPrint('Parking lot fetch failed: $error');
     }
   }
+
 
   // --- 상태 색상 매핑 ---
   /// 수소 충전소 운영 상태 텍스트를 컬러로 매핑한다.
@@ -1144,7 +1286,8 @@ class _MapScreenState extends State<MapScreen> {
                   '최근 갱신', station.statusUpdatedAt ?? '정보 없음'),
               _buildStationField(
                 '주소',
-                '${station.address ?? ''} ${station.addressDetail ?? ''}'.trim(),
+                '${station.address ?? ''} ${station.addressDetail ?? ''}'
+                    .trim(),
               ),
               _buildStationField(
                   '무료주차', station.parkingFree == true ? '예' : '아니요'),
