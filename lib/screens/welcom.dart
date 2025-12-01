@@ -156,162 +156,150 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
-      body: SingleChildScrollView(
-        child: Center(
-          child: SizedBox(
-            width: 402,
-            height: 874,
-            child: Stack(
-              children: [
-                // ========================================================
-                // [수정됨] 아이콘들에 BouncingAnimation 적용 완료
-                // ========================================================
-
-                // 1. 작은 물방울 (딜레이 0)
-                Positioned(
-                  left: 110,
-                  top: 103,
-                  child: BouncingAnimation(
-                    delay: 0, // 바로 시작
-                    child: Image.asset(
-                      'lib/assets/icons/welcome_sc/mini_h2.png',
-                      width: 80,
-                      height: 70,
-                    ),
-                  ),
-                ),
-
-                // 2. 작은 번개 (딜레이 200ms)
-                Positioned(
-                  left: 289,
-                  top: 132,
-                  child: BouncingAnimation(
-                    delay: 200, // 엇박자
-                    child: Image.asset(
-                      'lib/assets/icons/welcome_sc/mini_thunder.png',
-                      width: 120,
-                      height: 110,
-                    ),
-                  ),
-                ),
-
-                // 3. 큰 번개 (딜레이 400ms)
-                Positioned(
-                  left: 186,
-                  top: 182,
-                  child: BouncingAnimation(
-                    delay: 400,
-                    child: Image.asset(
-                      'lib/assets/icons/welcome_sc/mini_thunder.png',
-                      width: 120,
-                      height: 110,
-                    ),
-                  ),
-                ),
-
-                // 4. 보라색 차 (딜레이 600ms)
-                Positioned(
-                  left: 14,
-                  top: 173,
-                  child: BouncingAnimation(
-                    delay: 600,
-                    child: Image.asset(
-                      'lib/assets/icons/welcome_sc/mini_purple_car.png',
-                      width: 87.24,
-                      height: 76.91,
-                    ),
-                  ),
-                ),
-
-                // ============================================================
-                // [Video] 5. 메인 캐릭터 (mp4 영상 재생)
-                // ============================================================
-                Positioned(
-                  left: 50,
-                  top: 300,
+      body: SafeArea(
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            return SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+              child: Center(
+                child: FittedBox(
+                  fit: BoxFit.contain,
+                  alignment: Alignment.topCenter,
                   child: SizedBox(
-                    width: 301,
-                    height: 200,
-                    child: _videoController.value.isInitialized
-                        ? AspectRatio(
-                      aspectRatio: _videoController.value.aspectRatio,
-                      child: VideoPlayer(_videoController),
-                    )
-                        : const Center(
-                      // 로딩 중일 때 표시 (노란색 로딩바)
-                      child: CircularProgressIndicator(color: Color(0xFFFEE500)),
-                    ),
-                  ),
-                ),
-                // ============================================================
-
-                // 6. Subtitle: "세상을 E-Lot게 하다"
-                const Positioned(
-                  left: 28,
-                  top: 580,
-                  child: Text(
-                    "세상을 E-Lot게 하다",
-                    style: TextStyle(
-                      fontFamily: 'lib/assets/fonts/NotoSansKR-Medium.ttf',
-                      fontSize: 20,
-                      color: Color(0xFF000000),
-                      height: 1.1,
-                    ),
-                  ),
-                ),
-
-                // 7. Title: "E-Lot"
-                const Positioned(
-                  left: 28,
-                  top: 615,
-                  child: Text(
-                    "E-Lot",
-                    style: TextStyle(
-                      fontFamily: 'lib/assets/fonts/NotoSansKR-Bold.ttf',
-                      fontSize: 48,
-                      fontWeight: FontWeight.w600,
-                      color: Color(0xFF000000),
-                      letterSpacing: -0.01,
-                    ),
-                  ),
-                ),
-
-                // [Logic UI] 카카오 설정 에러 메시지
-                if (widget.kakaoConfigError != null)
-                  Positioned(
-                    left: 23,
-                    top: 660,
-                    child: Container(
-                      width: 357,
-                      alignment: Alignment.center,
-                      child: Text(
-                        widget.kakaoConfigError!,
-                        style: TextStyle(
-                          color: Colors.orange.shade900,
-                          fontSize: 12,
+                    width: 402,
+                    height: 874,
+                    child: Stack(
+                      children: [
+                        Positioned(
+                          left: 110,
+                          top: 103,
+                          child: BouncingAnimation(
+                            delay: 0, // 바로 시작
+                            child: Image.asset(
+                              'lib/assets/icons/welcome_sc/mini_h2.png',
+                              width: 80,
+                              height: 70,
+                            ),
+                          ),
                         ),
-                        textAlign: TextAlign.center,
-                      ),
-                    ),
-                  ),
-
-// 8. Kakao Login Button (Top: 698, Left: 23)
-                Positioned(
-                  left: 23,
-                  top: 730,
-                  child: GestureDetector(
-                    onTap: () => _handleKakaoLogin(context),
-                    child: Image.asset(
-                      'lib/assets/icons/welcome_sc/kakao_login_medium_wide.png', // 이전에 쓰던 이미지 경로
-                      width: 357,
-                      height: 53,
-                      fit: BoxFit.cover,
+                        Positioned(
+                          left: 289,
+                          top: 132,
+                          child: BouncingAnimation(
+                            delay: 200, // 엇박자
+                            child: Image.asset(
+                              'lib/assets/icons/welcome_sc/mini_thunder.png',
+                              width: 120,
+                              height: 110,
+                            ),
+                          ),
+                        ),
+                        Positioned(
+                          left: 186,
+                          top: 182,
+                          child: BouncingAnimation(
+                            delay: 400,
+                            child: Image.asset(
+                              'lib/assets/icons/welcome_sc/mini_thunder.png',
+                              width: 120,
+                              height: 110,
+                            ),
+                          ),
+                        ),
+                        Positioned(
+                          left: 14,
+                          top: 173,
+                          child: BouncingAnimation(
+                            delay: 600,
+                            child: Image.asset(
+                              'lib/assets/icons/welcome_sc/mini_purple_car.png',
+                              width: 87.24,
+                              height: 76.91,
+                            ),
+                          ),
+                        ),
+                        Positioned(
+                          left: 50,
+                          top: 300,
+                          child: SizedBox(
+                            width: 301,
+                            height: 200,
+                            child: _videoController.value.isInitialized
+                                ? AspectRatio(
+                                    aspectRatio: _videoController.value.aspectRatio,
+                                    child: VideoPlayer(_videoController),
+                                  )
+                                : const Center(
+                                    child: CircularProgressIndicator(
+                                      color: Color(0xFFFEE500),
+                                    ),
+                                  ),
+                          ),
+                        ),
+                        const Positioned(
+                          left: 28,
+                          top: 580,
+                          child: Text(
+                            "세상을 E-Lot게 하다",
+                            style: TextStyle(
+                              fontFamily: 'lib/assets/fonts/NotoSansKR-Medium.ttf',
+                              fontSize: 20,
+                              color: Color(0xFF000000),
+                              height: 1.1,
+                            ),
+                          ),
+                        ),
+                        const Positioned(
+                          left: 28,
+                          top: 615,
+                          child: Text(
+                            "E-Lot",
+                            style: TextStyle(
+                              fontFamily: 'lib/assets/fonts/NotoSansKR-Bold.ttf',
+                              fontSize: 48,
+                              fontWeight: FontWeight.w600,
+                              color: Color(0xFF000000),
+                              letterSpacing: -0.01,
+                            ),
+                          ),
+                        ),
+                        if (widget.kakaoConfigError != null)
+                          Positioned(
+                            left: 23,
+                            top: 660,
+                            child: Container(
+                              width: 357,
+                              alignment: Alignment.center,
+                              child: Text(
+                                widget.kakaoConfigError!,
+                                style: TextStyle(
+                                  color: Colors.orange.shade900,
+                                  fontSize: 12,
+                                ),
+                                textAlign: TextAlign.center,
+                              ),
+                            ),
+                          ),
+                        Positioned(
+                          left: 23,
+                          top: 730,
+                          child: GestureDetector(
+                            onTap: () => _handleKakaoLogin(context),
+                            child: Image.asset(
+                              'lib/assets/icons/welcome_sc/kakao_login_medium_wide.png', // 이전에 쓰던 이미지 경로
+                              width: 357,
+                              height: 53,
+                              fit: BoxFit.cover,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ),
-              ],
-            ),
-          ),
+              ),
+            );
+          },
         ),
       ),
     );

@@ -65,7 +65,7 @@ class MainBottomNavBar extends StatelessWidget {
             Container(
               height: 72, // 바 높이
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: Colors.white.withOpacity(0.92), // 살짝 비춰서 지도와 겹침을 느낄 수 있게
                 borderRadius: BorderRadius.circular(36),
                 boxShadow: [
                   BoxShadow(

@@ -219,7 +219,10 @@ class _MapScreenState extends State<MapScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      extendBody: true, // 바 뒤로 본문을 확장해서 지도가 바 아래까지 깔리도록 함
       body: SafeArea(
+        top: true,
+        bottom: false, // 하단 네비게이션 영역까지 지도가 깔리도록 bottom 패딩 제거
         child: Stack(
           children: [
             NaverMap(
