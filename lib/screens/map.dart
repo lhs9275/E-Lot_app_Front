@@ -218,6 +218,14 @@ class _MapScreenState extends State<MapScreen> {
   // --- build & UI 구성 ---
   @override
   Widget build(BuildContext context) {
+    // 하단 네비게이션 바(높이 90 + 마진 20)와 기기 하단 패딩만큼 지도 UI 여백을 줘서
+    // 기본 제공 버튼(현재 위치 등)이 바 뒤로 숨지 않도록 한다.
+    const double navBarHeight = 60;
+    const double navBarBottomMargin = 10; // 바를 살짝 더 아래로 내려 여백을 줄임
+    final double bottomInset = MediaQuery.of(context).padding.bottom;
+    final double mapBottomPadding =
+        navBarHeight + navBarBottomMargin + bottomInset;
+
     return Scaffold(
       extendBody: true, // 바 뒤로 본문을 확장해서 지도가 바 아래까지 깔리도록 함
       body: SafeArea(
@@ -229,6 +237,9 @@ class _MapScreenState extends State<MapScreen> {
               options: NaverMapViewOptions(
                 initialCameraPosition: _initialCamera,
                 locationButtonEnable: true,
+                contentPadding: EdgeInsets.only(
+                  bottom: mapBottomPadding,
+                ),
               ),
 
               /// ⭐ 클러스터 옵션 (유리구슬 느낌)

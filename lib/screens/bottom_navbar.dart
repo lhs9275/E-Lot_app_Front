@@ -56,7 +56,7 @@ class MainBottomNavBar extends StatelessWidget {
       child: Container(
         // 👆 튀어나올 공간 확보를 위해 전체 컨테이너 높이를 넉넉히 줌 (85~90)
         height: 90,
-        margin: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+        margin: const EdgeInsets.fromLTRB(20, 0, 20, 10), // 바를 조금 더 아래로 내려서 공간 확보
         child: Stack(
           alignment: Alignment.bottomCenter, // 하단 중앙 정렬
           clipBehavior: Clip.none, // 🚀 중요: 캐릭터가 영역 밖으로 튀어나가도 잘리지 않게 함
