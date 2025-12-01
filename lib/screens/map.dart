@@ -56,7 +56,7 @@ Future<void> main() async {
     },
   );
 
-  // H2 API 인스턴스 초기화 (이미 전역으로 있다면 이 부분은 네 프로젝트 구조에 맞게)
+  // H2 API 인스턴스 초기화
   final h2BaseUrl = dotenv.env['H2_API_BASE_URL'];
   if (h2BaseUrl == null || h2BaseUrl.isEmpty) {
     debugPrint('❌ H2_API_BASE_URL 이 .env에 없습니다.');
@@ -115,7 +115,6 @@ class _MapScreenState extends State<MapScreen> {
   bool _isLoadingParkingLots = true;
   String? _stationError;
 
-
   // 검색창 컨트롤러
   final TextEditingController _searchController = TextEditingController();
 
@@ -132,8 +131,11 @@ class _MapScreenState extends State<MapScreen> {
   late final NCameraPosition _initialCamera =
   NCameraPosition(target: _initialTarget, zoom: 8.5);
 
-  /// ⭐ 백엔드 주소 (clos21)
+  /// ⭐ 백엔드 주소 (clos21, BFF 포함)
   static const String _backendBaseUrl = 'https://clos21.kr';
+
+  /// ⭐ 기본 반경 (km) – 내 주변 검색용
+  static const double _defaultNearbyRadiusKm = 3.0;
 
   /// ⭐ 리뷰에서 사용할 기본 이미지 (충전소 개별 사진이 아직 없으므로 공통)
   static const String _defaultStationImageUrl =
@@ -152,16 +154,16 @@ class _MapScreenState extends State<MapScreen> {
 
   // --- 계산용 getter 들 ---
   Iterable<H2Station> get _h2StationsWithCoordinates =>
-      _h2Stations.where((station) =>
-      station.latitude != null && station.longitude != null);
+      _h2Stations.where(
+              (station) => station.latitude != null && station.longitude != null);
 
   Iterable<EVStation> get _evStationsWithCoordinates =>
       _evStations.where(
               (station) => station.latitude != null && station.longitude != null);
 
   Iterable<ParkingLot> get _parkingLotsWithCoordinates =>
-      _parkingLots.where(
-              (lot) => lot.latitude != null && lot.longitude != null);
+      _parkingLots
+          .where((lot) => lot.latitude != null && lot.longitude != null);
 
   int get _totalMappableMarkerCount {
     int count = 0;
@@ -178,9 +180,7 @@ class _MapScreenState extends State<MapScreen> {
   }
 
   bool get _isInitialLoading =>
-      _isLoadingH2Stations ||
-          _isLoadingEvStations ||
-          _isLoadingParkingLots;
+      _isLoadingH2Stations || _isLoadingEvStations || _isLoadingParkingLots;
 
   // --- 라이프사이클 ---
   @override
@@ -219,10 +219,7 @@ class _MapScreenState extends State<MapScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      extendBody: true, // 바 뒤로 본문을 확장해서 지도가 바 아래까지 깔리도록 함
       body: SafeArea(
-        top: true,
-        bottom: false, // 하단 네비게이션 영역까지 지도가 깔리도록 bottom 패딩 제거
         child: Stack(
           children: [
             NaverMap(
@@ -276,6 +273,13 @@ class _MapScreenState extends State<MapScreen> {
               top: 95, // 검색창 아래
               left: 16,
               child: _buildFilterBar(),
+            ),
+
+            /// ⭐ "내 주변 3km" 반경 검색 버튼
+            Positioned(
+              top: 95,
+              right: 16,
+              child: _buildNearbyButton(),
             ),
 
             if (_isInitialLoading) _buildLoadingBanner(),
@@ -559,6 +563,35 @@ class _MapScreenState extends State<MapScreen> {
     );
   }
 
+  /// ⭐ "내 주변 3km" 반경 검색 버튼
+  Widget _buildNearbyButton() {
+    return ElevatedButton.icon(
+      style: ElevatedButton.styleFrom(
+        elevation: 2,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        backgroundColor: Colors.white,
+        foregroundColor: Colors.black87,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(999),
+          side: const BorderSide(color: Color(0xFF5A3FFF)),
+        ),
+      ),
+      onPressed: _isInitialLoading ? null : _onTapNearbyButton,
+      icon: const Icon(
+        Icons.my_location,
+        size: 18,
+        color: Color(0xFF5A3FFF),
+      ),
+      label: Text(
+        '내 주변 ${_defaultNearbyRadiusKm.toStringAsFixed(1)}km',
+        style: const TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    );
+  }
+
   /// 상단 중앙 로딩 토스트.
   Widget _buildLoadingBanner() {
     return Align(
@@ -660,12 +693,11 @@ class _MapScreenState extends State<MapScreen> {
   /// 현재 표시 중인 마커의 개수를 보여주는 칩.
   Widget _buildStationsBadge() {
     return Positioned(
-      top: 0, // 🔹 필터 바 아래쪽 위치
+      top: 0, // 🔹 상단 위치
       left: 16,
       child: Chip(
         avatar: const Icon(Icons.ev_station, size: 16, color: Colors.white),
-        label:
-        Text('표시 중: $_totalMappableMarkerCount개 위치(H2/EV/주차)'),
+        label: Text('표시 중: $_totalMappableMarkerCount개 위치(H2/EV/주차)'),
         backgroundColor: Colors.black.withOpacity(0.7),
         labelStyle: const TextStyle(color: Colors.white),
         padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -823,8 +855,6 @@ class _MapScreenState extends State<MapScreen> {
     try {
       // 🔥 클러스터러블 마커 타입으로 지워야 함
       await controller.clearOverlays(type: NOverlayType.clusterableMarker);
-      // 또는 완전히 싹 다 지우고 싶으면:
-      // await controller.clearOverlays();
     } catch (_) {
       // 초기 로딩 동안은 컨트롤러 정리가 실패할 수 있으므로 무시한다.
     }
@@ -855,7 +885,6 @@ class _MapScreenState extends State<MapScreen> {
       debugPrint('Marker overlay add failed: $error');
     }
   }
-
 
   /// 수소 충전소 데이터를 기반으로 Naver Map 마커를 구성한다.
   NClusterableMarker _buildH2Marker(H2Station station) {
@@ -948,7 +977,7 @@ class _MapScreenState extends State<MapScreen> {
   }
 
   // --- 데이터 로딩 ---
-  /// 수소/전기 충전소를 동시에 불러오고 로딩 및 오류 상태를 초기화한다.
+  /// 수소/전기/주차장을 동시에 불러오고 로딩 및 오류 상태를 초기화한다.
   Future<void> _loadAllStations() async {
     setState(() {
       _isLoadingH2Stations = true;
@@ -1007,7 +1036,6 @@ class _MapScreenState extends State<MapScreen> {
     }
   }
 
-
   /// 주차장 전체 목록을 불러온다.
   Future<void> _loadParkingLotsAll() async {
     setState(() {
@@ -1017,9 +1045,8 @@ class _MapScreenState extends State<MapScreen> {
 
     try {
       final lots = await parkingLotApi.fetchAll(size: 1000);
-      final withCoords = lots
-          .where((e) => e.latitude != null && e.longitude != null)
-          .length;
+      final withCoords =
+          lots.where((e) => e.latitude != null && e.longitude != null).length;
       if (!mounted) return;
       setState(() {
         _parkingLots = lots;
@@ -1037,6 +1064,94 @@ class _MapScreenState extends State<MapScreen> {
     }
   }
 
+  /// ⭐ BFF(/mapi/search/nearby)를 통해 "내 주변" 반경 검색
+  ///
+  /// JSON 구조 가정:
+  /// {
+  ///   "H2Stations": [ ... ],
+  ///   "EVStations": [ ... ],
+  ///   "ParkingLot": [ ... ]
+  /// }
+  Future<void> _loadNearbyStationsFromBackend({
+    required double lat,
+    required double lon,
+    double radiusKm = 3.0,
+  }) async {
+    setState(() {
+      _isLoadingH2Stations = true;
+      _isLoadingEvStations = true;
+      _isLoadingParkingLots = true;
+      _stationError = null;
+    });
+
+    final radiusMeters = (radiusKm * 1000).round(); // 백엔드는 meter 단위 사용
+
+    // 🔹 includeEv / includeH2 / includeParking: 현재 필터 상태 그대로 전달
+    final uri = Uri.parse(
+      '$_backendBaseUrl/mapi/search/nearby'
+          '?lat=$lat'
+          '&lon=$lon' // ⚠️ 파라미터 이름은 lng가 아니라 lon
+          '&radius=$radiusMeters'
+          '&includeEv=$_showEv'
+          '&includeH2=$_showH2'
+          '&includeParking=$_showParking',
+    );
+
+    try {
+      debugPrint('➡️ nearby 호출: $uri');
+      final res = await http.get(uri);
+
+      debugPrint('⬅️ nearby 결과: ${res.statusCode} ${res.body}');
+
+      if (res.statusCode != 200) {
+        throw Exception('nearby 실패: ${res.statusCode} ${res.body}');
+      }
+
+      final body = jsonDecode(res.body) as Map<String, dynamic>;
+
+      // 🔹 JSON 필드 이름 가정: H2Stations / EVStations / ParkingLot
+      final List<dynamic> h2RawList =
+          (body['H2Stations'] as List?) ?? const [];
+      final List<dynamic> evRawList =
+          (body['EVStations'] as List?) ?? const [];
+      final List<dynamic> parkingRawList =
+          (body['ParkingLot'] as List?) ?? const [];
+
+      final h2Stations = h2RawList
+          .map((e) => H2Station.fromJson(e as Map<String, dynamic>))
+          .toList();
+
+      final evStations = evRawList
+          .map((e) => EVStation.fromJson(e as Map<String, dynamic>))
+          .toList();
+
+      final parkingLots = parkingRawList
+          .map((e) => ParkingLot.fromJson(e as Map<String, dynamic>))
+          .toList();
+
+      if (!mounted) return;
+      setState(() {
+        _h2Stations = h2Stations;
+        _evStations = evStations;
+        _parkingLots = parkingLots;
+        _isLoadingH2Stations = false;
+        _isLoadingEvStations = false;
+        _isLoadingParkingLots = false;
+      });
+
+      // 새 데이터 기준으로 마커 다시 그림
+      unawaited(_renderStationMarkers());
+    } catch (e) {
+      debugPrint('❌ nearby 호출 중 오류: $e');
+      if (!mounted) return;
+      setState(() {
+        _isLoadingH2Stations = false;
+        _isLoadingEvStations = false;
+        _isLoadingParkingLots = false;
+        _stationError ??= '내 주변 데이터를 불러오지 못했습니다.';
+      });
+    }
+  }
 
   // --- 상태 색상 매핑 ---
   /// 수소 충전소 운영 상태 텍스트를 컬러로 매핑한다.
@@ -1392,8 +1507,41 @@ class _MapScreenState extends State<MapScreen> {
     }
   }
 
-  /// 새로고침 FAB - 서버 상태를 다시 요청한다.
+  /// 새로고침 FAB - 서버 상태를 다시 요청한다. (전국 모드)
   void _onCenterButtonPressed() async {
     await _loadAllStations();
+  }
+
+  /// ⭐ "내 주변" 버튼 눌렀을 때 – 현재 카메라 중심 기준
+  Future<void> _onTapNearbyButton() async {
+    final controller = _controller;
+    if (controller == null) return;
+
+    // 1) 현재 카메라 위치 (지도 중심)
+    final camera = await controller.getCameraPosition();
+    final center = camera.target;
+    final lat = center.latitude;
+    final lon = center.longitude; // ⚠️ BFF 파라미터 이름과 맞춰서 lon 사용
+
+    debugPrint('📍 nearby 검색: lat=$lat, lon=$lon, '
+        'radius=${_defaultNearbyRadiusKm}km');
+
+    // 2) BFF에 반경 검색 요청
+    await _loadNearbyStationsFromBackend(
+      lat: lat,
+      lon: lon,
+      radiusKm: _defaultNearbyRadiusKm,
+    );
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          '지도 중심 기준 ${_defaultNearbyRadiusKm.toStringAsFixed(1)}km 이내 '
+              '충전/주차 위치만 불러왔습니다.',
+        ),
+        duration: const Duration(seconds: 2),
+      ),
+    );
   }
 }
