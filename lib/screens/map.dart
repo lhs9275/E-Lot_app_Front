@@ -1,4 +1,4 @@
-// lib/screens/map.dart
+﻿// lib/screens/map.dart
 import 'dart:async';
 import 'dart:convert'; // ⭐ 즐겨찾기 동기화용 JSON 파싱
 
@@ -125,7 +125,7 @@ class _MapScreenState extends State<MapScreen> {
   // ⭐ 타입별 표시 필터 (기본: 모두 ON)
   bool _showH2 = true;
   bool _showEv = true;
-  bool _showParking = true;
+  bool _showParking = true;\n  bool _isManualRefreshing = false;
 
   // 시작 위치 (예: 서울시청)
   final NLatLng _initialTarget = const NLatLng(37.5666, 126.9790);
@@ -143,7 +143,6 @@ class _MapScreenState extends State<MapScreen> {
   final Set<String> _favoriteStationIds = {};
 
   /// ⭐ H2만 15초마다 자동 새로고침용 타이머
-  Timer? _h2AutoRefreshTimer;
 
   /// 💡 지도 마커 색상 (유형 구분)
   static const Color _h2MarkerBaseColor = Color(0xFF2563EB); // 파란색 톤
@@ -179,37 +178,18 @@ class _MapScreenState extends State<MapScreen> {
 
   bool get _isInitialLoading =>
       _isLoadingH2Stations ||
-          _isLoadingEvStations ||
-          _isLoadingParkingLots;
+      _isLoadingEvStations ||
+      _isLoadingParkingLots;
 
   // --- 라이프사이클 ---
   @override
   void initState() {
     super.initState();
     _loadAllStations();
-    _startH2AutoRefresh(); // ⭐ H2 15초 자동 갱신 시작
-  }
-
-  /// ⭐ H2 수소충전소만 15초마다 자동 갱신
-  void _startH2AutoRefresh() {
-    _h2AutoRefreshTimer?.cancel();
-
-    _h2AutoRefreshTimer = Timer.periodic(
-      const Duration(seconds: 15),
-          (timer) {
-        if (!mounted) {
-          timer.cancel();
-          return;
-        }
-        if (_isLoadingH2Stations) return;
-        _loadH2Stations(); // EV 쪽은 건드리지 않고, H2만 갱신
-      },
-    );
   }
 
   @override
   void dispose() {
-    _h2AutoRefreshTimer?.cancel(); // ⭐ H2 자동 새로고침 타이머 정리
     _controller = null;
     _searchController.dispose(); // 검색창 컨트롤러 정리
     super.dispose();
@@ -305,7 +285,7 @@ class _MapScreenState extends State<MapScreen> {
         ),
       ),
       floatingActionButton: Transform.translate(
-        offset: const Offset(155, -65.0),
+        offset: const Offset(155, -30.0), // 버튼을 조금 낮춰 화면에 더 가깝게
         child: FloatingActionButton(
           onPressed: _isInitialLoading ? null : _onCenterButtonPressed,
           child: _isInitialLoading
@@ -1408,3 +1388,11 @@ class _MapScreenState extends State<MapScreen> {
     await _loadAllStations();
   }
 }
+
+
+
+
+
+
+
+

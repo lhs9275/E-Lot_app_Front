@@ -23,18 +23,14 @@ class MainBottomNavBar extends StatelessWidget {
   void _handleTap(BuildContext context, int index) {
     if (index == currentIndex) return;
 
-    if (index == 1) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('충전소 찾기 기능은 준비 중입니다.')),
-      );
-      return;
-    }
-
     Widget target;
     switch (index) {
       case 0: // 지도 (차 아이콘)
         target = const MapScreen();
         break;
+      case 1: // 추천 랭킹
+        Navigator.of(context).pushReplacementNamed('/ranking');
+        return;
       case 2: // 즐겨찾기 (리스트 아이콘)
         target = const FavoritesPage();
         break;
