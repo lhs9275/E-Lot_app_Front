@@ -125,7 +125,8 @@ class _MapScreenState extends State<MapScreen> {
   // ⭐ 타입별 표시 필터 (기본: 모두 ON)
   bool _showH2 = true;
   bool _showEv = true;
-  bool _showParking = true;\n  bool _isManualRefreshing = false;
+  bool _showParking = true;
+  bool _isManualRefreshing = false;
 
   // 시작 위치 (예: 서울시청)
   final NLatLng _initialTarget = const NLatLng(37.5666, 126.9790);
@@ -284,20 +285,20 @@ class _MapScreenState extends State<MapScreen> {
           ],
         ),
       ),
-      floatingActionButton: Transform.translate(
-        offset: const Offset(155, -30.0), // 버튼을 조금 낮춰 화면에 더 가깝게
+      floatingActionButton: Padding(
+        padding: const EdgeInsets.only(bottom: 24, right: 4),
         child: FloatingActionButton(
-          onPressed: _isInitialLoading ? null : _onCenterButtonPressed,
-          child: _isInitialLoading
+          onPressed: _isManualRefreshing ? null : _onCenterButtonPressed,
+          child: _isManualRefreshing
               ? const SizedBox(
-            width: 20,
-            height: 20,
-            child: CircularProgressIndicator(strokeWidth: 2.4),
-          )
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2.4),
+                )
               : const Icon(Icons.refresh),
         ),
       ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
 
       /// ✅ 하단 네비게이션 바 (지도 탭이므로 index = 0)
       bottomNavigationBar: const MainBottomNavBar(
@@ -1385,14 +1386,26 @@ class _MapScreenState extends State<MapScreen> {
 
   /// 새로고침 FAB - 서버 상태를 다시 요청한다.
   void _onCenterButtonPressed() async {
-    await _loadAllStations();
+    if (_isManualRefreshing) return;
+    setState(() => _isManualRefreshing = true);
+    debugPrint('Manual refresh started');
+
+    try {
+      await _loadAllStations();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('새로고침에 실패했습니다. 다시 시도하세요.')),
+        );
+      }
+      debugPrint('Manual refresh failed: $e');
+    } finally {
+      if (mounted) {
+        setState(() => _isManualRefreshing = false);
+      } else {
+        _isManualRefreshing = false;
+      }
+      debugPrint('Manual refresh ended');
+    }
   }
 }
-
-
-
-
-
-
-
-
