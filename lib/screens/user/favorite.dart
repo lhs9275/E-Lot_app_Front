@@ -4,8 +4,8 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:psp2_fn/auth/token_storage.dart';
-import 'bottom_navbar.dart';
-import 'map.dart';
+import '../bottom_navbar.dart';
+import '../map.dart';
 
 /// 즐겨찾기 아이템 모델 (stationId + stationName만 사용)
 class FavoriteItem {

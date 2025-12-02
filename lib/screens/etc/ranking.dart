@@ -3,9 +3,9 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_naver_map/flutter_naver_map.dart';
 import 'package:geolocator/geolocator.dart';
 
-import '../models/route_ranking_models.dart';
-import '../services/route_ranking_api_service.dart';
-import 'bottom_navbar.dart';
+import '../../models/route_ranking_models.dart';
+import '../../services/route_ranking_api_service.dart';
+import '../bottom_navbar.dart';
 import 'destination_picker.dart';
 
 class RankingScreen extends StatefulWidget {

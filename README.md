@@ -27,9 +27,10 @@
 | `lib/models/` | 디렉터리 | 화면 간 공유하는 데이터 모델 정의가 위치합니다. |
 | `lib/models/h2_station.dart` | 파일 (`H2Station`) | 실시간(`realtime`)과 운영(`operation`) 정보를 합쳐 좌표·상태·통계 값을 안전하게 파싱합니다. |
 | `lib/screens/` | 디렉터리 | 모든 Flutter 화면이 위치하며 지도, 정보, 신고 등 서브 화면을 포함합니다. |
-| `lib/screens/welcom.dart` | 파일 (`WelcomeScreen`) | 카카오 로그인 UI와 `_handleKakaoLogin()` 로직을 담당해 성공 시 `MapScreen`으로 라우팅합니다. |
-| `lib/screens/map.dart` | 파일 (`MapScreen`) | 네이버 지도를 렌더링하고 마커, 하단 내비게이션, 바텀시트, 로딩/에러 배너를 제어합니다. |
-| `lib/screens/h2info_screen.dart` | 파일 (`InfoScreen`) | 리스트 형태로 충전소 세부 정보를 탐색할 수 있는 보조 화면입니다. |
+| `lib/screens/auth/welcome_screen.dart` | 파일 (`WelcomeScreen`) | 카카오 로그인 UI와 `_handleKakaoLogin()` 로직을 담당해 성공 시 `MapScreen`으로 라우팅합니다. |
+| `lib/screens/map/` | 디렉터리 | 지도 화면(`map_screen.dart`), 클러스터 옵션, 마커 빌더 등 지도 관련 모듈을 모아둔 폴더입니다. |
+| `lib/screens/info/h2info_screen.dart` | 파일 (`InfoScreen`) | 리스트 형태로 충전소 세부 정보를 탐색할 수 있는 보조 화면입니다. |
+| `lib/screens/etc/ranking.dart` | 파일 (`RankingScreen`) | 출발/도착/반경 조건으로 주변 충전소 랭킹을 보여주는 화면입니다. |
 | `test/widget_test.dart` | 파일 | Flutter 기본 Counter 예제 테스트가 남아 있으며 나중에 실제 위젯 테스트로 교체할 예정입니다. |
 
 필요 시 이 표를 “사전”처럼 참고해 어떤 파일이 무슨 책임을 갖는지 빠르게 파악할 수 있습니다.
@@ -98,11 +99,11 @@ flutter run
 - `lib/main.dart > _resolveH2BaseUrl()` : `.env`에 값이 없으면 기본값 `https://clos21.kr`을 선택하고 경고 로그를 남깁니다.
 - `lib/main.dart > _initializeNaverMap()` : `FlutterNaverMap().init()`을 호출해 클라이언트 ID 인증과 예외 처리를 담당합니다.
 - `lib/services/h2_station_api_service.dart > H2StationApiService.fetchStations()` : `/mapi/h2/stations?type=all`을 호출해 JSON을 `H2Station` 리스트로 변환합니다.
-- `lib/screens/welcom.dart > _handleKakaoLogin()` : 카카오 로그인 시도 → Clos21 백엔드 토큰 교환 → `TokenStorage.saveTokens()` → `MapScreen` 라우팅 흐름을 구현합니다.
+- `lib/screens/auth/welcome_screen.dart > _handleKakaoLogin()` : 카카오 로그인 시도 → Clos21 백엔드 토큰 교환 → `TokenStorage.saveTokens()` → `MapScreen` 라우팅 흐름을 구현합니다.
 - `lib/auth/token_storage.dart > TokenStorage` : `flutter_secure_storage` 기반으로 access/refresh 토큰 저장·조회·삭제 기능을 제공합니다.
-- `lib/screens/map.dart > _loadStations()` : 로딩/에러 상태를 관리하며 최신 충전소 데이터를 가져옵니다.
-- `lib/screens/map.dart > _renderStationMarkers()` : 좌표가 있는 충전소만 모아 네이버 지도에 마커/클러스터를 추가하고 터치 시 바텀시트를 엽니다.
-- `lib/screens/map.dart > _showStationBottomSheet()` : 충전소 이름, 상태, 대기 차량, 최대 충전 가능 대수, 최종 갱신 시각을 표시하는 바텀시트를 렌더링합니다.
+- `lib/screens/map/map_screen.dart > _loadStations()` : 로딩/에러 상태를 관리하며 최신 충전소 데이터를 가져옵니다.
+- `lib/screens/map/map_screen.dart > _renderStationMarkers()` : 좌표가 있는 충전소만 모아 네이버 지도에 마커/클러스터를 추가하고 터치 시 바텀시트를 엽니다.
+- `lib/screens/map/map_screen.dart > _showStationBottomSheet()` : 충전소 이름, 상태, 대기 차량, 최대 충전 가능 대수, 최종 갱신 시각을 표시하는 바텀시트를 렌더링합니다.
 
 ---
 

@@ -7,8 +7,8 @@ import 'package:http/http.dart' as http;
 
 import 'package:psp2_fn/auth/token_storage.dart';
 import 'favorite.dart'; // ⭐ 즐겨찾기 페이지
-import 'bottom_navbar.dart'; // ✅ 공통 하단 네비게이션 바
-import 'map.dart';
+import '../bottom_navbar.dart'; // ✅ 공통 하단 네비게이션 바
+import '../map.dart';
 import 'settings.dart';
 
 class MyPageScreen extends StatefulWidget {
@@ -660,6 +660,5 @@ class MyReportsPage extends StatelessWidget {
     );
   }
 }
-
 
 

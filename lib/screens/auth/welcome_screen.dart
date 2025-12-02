@@ -1,11 +1,6 @@
-import 'dart:convert';
-import 'dart:developer' as developer;
-
 import 'package:flutter/material.dart';
 // import 'package:flutter_svg/flutter_svg.dart';
-import 'package:http/http.dart' as http;
-import 'package:kakao_flutter_sdk_user/kakao_flutter_sdk_user.dart';
-import 'package:psp2_fn/auth/token_storage.dart';
+import 'package:psp2_fn/auth/auth_api.dart';
 import 'package:psp2_fn/screens/map.dart';
 import 'package:video_player/video_player.dart'; // [필수] 비디오 패키지
 
@@ -75,66 +70,16 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
         return;
       }
 
-      // 1. 카카오 로그인 시도
-      OAuthToken kakaoToken;
-      try {
-        kakaoToken = await UserApi.instance.loginWithKakaoTalk();
-      } catch (_) {
-        kakaoToken = await UserApi.instance.loginWithKakaoAccount();
-      }
+      // 공통 AuthApi로 로그인 & 토큰 저장
+      await AuthApi.loginWithKakao();
 
-      // 2. 백엔드로 토큰 전달
-      final response = await http.post(
-        Uri.parse('https://clos21.kr/mapi/auth/kakao'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'kakaoAccessToken': kakaoToken.accessToken}),
+      if (!context.mounted) return;
+
+      // 로그인 성공 -> 지도 화면 이동
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => const MapScreen()),
       );
-
-      developer.log(
-        '[/mapi/auth/kakao] response ${response.statusCode}: ${response.body}',
-        name: 'WelcomeScreen',
-      );
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        final accessToken = data['access_token'] as String?;
-        final refreshToken = data['refresh_token'] as String?;
-
-        if (accessToken == null || refreshToken == null) {
-          if (!context.mounted) return;
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('서버 응답에 토큰 정보가 없습니다.')),
-          );
-          return;
-        }
-
-        await TokenStorage.saveTokens(
-          accessToken: accessToken,
-          refreshToken: refreshToken,
-        );
-
-        developer.log(
-          '[/mapi/auth/kakao] issued tokens '
-              'access=${_previewToken(accessToken)} '
-              'refresh=${_previewToken(refreshToken)}',
-          name: 'WelcomeScreen',
-        );
-
-        if (!context.mounted) return;
-
-        // 로그인 성공 -> 지도 화면 이동
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (_) => const MapScreen()),
-        );
-      } else {
-        if (!context.mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('로그인 실패 (${response.statusCode}): ${response.body}'),
-          ),
-        );
-      }
     } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -142,11 +87,6 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
         );
       }
     }
-  }
-
-  String _previewToken(String token) {
-    if (token.length <= 10) return token;
-    return '${token.substring(0, 6)}...${token.substring(token.length - 4)}';
   }
 
   // ------------------------------------------------------------------------

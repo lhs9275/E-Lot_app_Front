@@ -3,8 +3,8 @@ import 'package:flutter/material.dart';
 
 // 🔁 각 탭이 열어줄 화면들 import
 import 'map.dart';
-import 'favorite.dart';
-import 'mypage.dart';
+import 'user/favorite.dart';
+import 'user/mypage.dart';
 
 class MainBottomNavBar extends StatelessWidget {
   /// 현재 선택된 탭 index (0: 지도, 1: 근처, 2: 즐겨찾기, 3: 내 정보)
