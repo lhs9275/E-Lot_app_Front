@@ -309,13 +309,14 @@ class _MapScreenState extends State<MapScreen> {
         ),
       ),
       floatingActionButton: Padding(
-        padding: const EdgeInsets.only(bottom: 24, right: 4),
+        padding: const EdgeInsets.only(bottom: 0, right: 4),
         child: FloatingActionButton(
           onPressed: _isManualRefreshing ? null : _refreshStations,
           child: _isManualRefreshing
               ? const SizedBox(
                   width: 20,
                   height: 20,
+
                   child: CircularProgressIndicator(strokeWidth: 2.4),
                 )
               : const Icon(Icons.refresh),

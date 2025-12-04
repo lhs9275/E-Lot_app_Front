@@ -7,7 +7,7 @@ import 'user/favorite.dart';
 import 'user/mypage.dart';
 
 class MainBottomNavBar extends StatelessWidget {
-  /// 현재 선택된 탭 index (0: 지도, 1: 근처, 2: 즐겨찾기, 3: 내 정보)
+  /// 현재 선택된 탭 index (0: 추천랭킹, 1: 즐겨찾기, 2: 기존메뉴, 3: 내 정보)
   final int currentIndex;
 
   const MainBottomNavBar({
@@ -25,10 +25,10 @@ class MainBottomNavBar extends StatelessWidget {
 
     Widget target;
     switch (index) {
-      case 0: // 지도 (차 아이콘)
+      case 0: // 기존: 지도 -> 변경 예정: 추천 랭킹
         target = const MapScreen();
         break;
-      case 1: // 추천 랭킹
+      case 1: // 기존: 랭킹 -> 변경 예정: 즐겨찾기
         Navigator.of(context).pushReplacementNamed('/ranking');
         return;
       case 2: // 즐겨찾기 (리스트 아이콘)
@@ -74,9 +74,21 @@ class MainBottomNavBar extends StatelessWidget {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
-                  // 좌측 아이콘
-                  _buildNavItem(context, index: 0, icon: Icons.directions_car_outlined, selectedIcon: Icons.directions_car_rounded),
-                  _buildNavItem(context, index: 1, icon: Icons.bolt_outlined, selectedIcon: Icons.bolt_rounded),
+                  // 좌측 아이콘 1: 추천 랭킹 (트로피 아이콘)
+                  _buildNavItem(
+                      context,
+                      index: 0,
+                      icon: Icons.emoji_events_outlined, // 빈 트로피
+                      selectedIcon: Icons.emoji_events_rounded // 꽉 찬 트로피
+                  ),
+
+                  // 좌측 아이콘 2: 즐겨찾기 (별 아이콘)
+                  _buildNavItem(
+                      context,
+                      index: 1,
+                      icon: Icons.star_border_rounded, // 빈 별
+                      selectedIcon: Icons.star_rounded // 꽉 찬 별
+                  ),
 
                   // ✨ 중앙 공백 (캐릭터가 들어갈 자리를 비워둠)
                   const SizedBox(width: 70),
@@ -126,9 +138,6 @@ class MainBottomNavBar extends StatelessWidget {
   Widget _buildCenterImageItem(BuildContext context) {
     return GestureDetector(
       onTap: () {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('안녕하세요! 저는 E-Lot 마스코트입니다! 👋')),
-        );
       },
       child: Container(
         width: 100, // 🚀 크기를 100으로 대폭 키움
