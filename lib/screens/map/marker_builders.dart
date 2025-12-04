@@ -5,6 +5,14 @@ import '../../models/ev_station.dart';
 import '../../models/h2_station.dart';
 import '../../models/parking_lot.dart';
 
+final NOverlayImage _h2MarkerIcon =
+NOverlayImage.fromAssetImage('lib/assets/icons/markers/ev_pin.png');
+final NOverlayImage _evMarkerIcon =
+NOverlayImage.fromAssetImage('lib/assets/icons/markers/h2_pin.png');
+final NOverlayImage _parkingMarkerIcon =
+NOverlayImage.fromAssetImage('lib/assets/icons/markers/parking_pin.png');
+
+
 NClusterableMarker buildH2Marker({
   required H2Station station,
   required Color tint,
@@ -28,7 +36,9 @@ NClusterableMarker buildH2Marker({
       color: statusColor(station.statusName),
       haloColor: Colors.white,
     ),
-    iconTintColor: tint,
+    icon: _h2MarkerIcon,
+    size: const Size(64, 64),
+    //iconTintColor: tint,
   );
 
   marker.setOnTapListener((_) => onTap(station));
@@ -58,7 +68,10 @@ NClusterableMarker buildEvMarker({
       color: statusColor(station.statusLabel),
       haloColor: Colors.white,
     ),
-    iconTintColor: tint,
+
+    icon: _evMarkerIcon,
+    size: const Size(64, 64),
+    //iconTintColor: tint,
   );
 
   marker.setOnTapListener((_) => onTap(station));
@@ -91,7 +104,10 @@ NClusterableMarker buildParkingMarker({
       color: Colors.deepOrange,
       haloColor: Colors.white,
     ),
-    iconTintColor: tint,
+
+    icon: _parkingMarkerIcon,
+    size: const Size(64, 64),
+    //iconTintColor: tint,
   );
 
   marker.setOnTapListener((_) => onTap(lot));

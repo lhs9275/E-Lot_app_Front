@@ -36,6 +36,7 @@ flutter:
     - lib/assets/icons/mascot_character/
     - lib/assets/icons/app_icon/
     - .env
+    - lib/assets/icons/markers/
 
 flutter_icons:
   android: true
