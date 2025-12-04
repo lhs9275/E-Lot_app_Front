@@ -8,7 +8,12 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_naver_map/flutter_naver_map.dart';
 import 'package:http/http.dart' as http;
 import 'cluster_options.dart';
+import 'cluster_options.dart';
+import 'map_controller.dart';
 import 'marker_builders.dart';
+import 'widgets/filter_bar.dart';
+import 'widgets/search_bar.dart';
+import 'widgets/status_banners.dart';
 
 import '../../models/ev_station.dart';
 import '../../models/h2_station.dart';
@@ -108,28 +113,21 @@ class MapScreen extends StatefulWidget {
 /// 지도 상호작용, 충전소 호출 및 즐겨찾기를 모두 관리하는 상태 객체.
 class _MapScreenState extends State<MapScreen> {
   // --- 상태 필드들 ---
+  final MapController _mapController =
+      MapController(h2Api: h2StationApi, evApi: evStationApi, parkingApi: parkingLotApi);
   NaverMapController? _controller;
   NOverlayImage? _clusterIcon;
-  List<H2Station> _h2Stations = [];
-  List<EVStation> _evStations = [];
-  List<ParkingLot> _parkingLots = [];
-  bool _isLoadingH2Stations = true;
-  bool _isLoadingEvStations = true;
-  bool _isLoadingParkingLots = true;
-  String? _stationError;
-
 
   // 검색창 컨트롤러
   final TextEditingController _searchController = TextEditingController();
 
   // 🔍 자동완성 후보 목록
   List<_SearchCandidate> _searchResults = [];
+  bool _isSearching = false;
+  String? _searchError;
 
-  // ⭐ 타입별 표시 필터 (기본: 모두 ON)
-  bool _showH2 = true;
-  bool _showEv = true;
-  bool _showParking = true;
   bool _isManualRefreshing = false;
+  bool _isMapLoaded = false;
 
   // 시작 위치 (예: 서울시청)
   final NLatLng _initialTarget = const NLatLng(37.5666, 126.9790);
@@ -153,49 +151,26 @@ class _MapScreenState extends State<MapScreen> {
   static const Color _evMarkerBaseColor = Color(0xFF10B981); // 초록색 톤
   static const Color _parkingMarkerBaseColor = Color(0xFFF59E0B); // 주차장 주황
 
-  /// 클러스터 옵션을 별도 헬퍼로 분리해 플랫폼마다 동일하게 적용.
-  NaverMapClusteringOptions get _clusterOptions => buildClusterOptions(
-        clusterIcon: _clusterIcon,
-        fallbackTint: _h2MarkerBaseColor,
-      );
+  /// 클러스터 옵션 (기본값)
+  NaverMapClusteringOptions get _clusterOptions => defaultClusterOptions;
 
-  // --- 계산용 getter 들 ---
+  String? get _stationError => _mapController.stationError;
+
   Iterable<H2Station> get _h2StationsWithCoordinates =>
-      _h2Stations.where((station) =>
-      station.latitude != null && station.longitude != null);
-
+      _mapController.h2StationsWithCoords;
   Iterable<EVStation> get _evStationsWithCoordinates =>
-      _evStations.where(
-              (station) => station.latitude != null && station.longitude != null);
-
+      _mapController.evStationsWithCoords;
   Iterable<ParkingLot> get _parkingLotsWithCoordinates =>
-      _parkingLots.where(
-              (lot) => lot.latitude != null && lot.longitude != null);
+      _mapController.parkingLotsWithCoords;
 
-  int get _totalMappableMarkerCount {
-    int count = 0;
-    if (_showH2) {
-      count += _h2StationsWithCoordinates.length;
-    }
-    if (_showEv) {
-      count += _evStationsWithCoordinates.length;
-    }
-    if (_showParking) {
-      count += _parkingLotsWithCoordinates.length;
-    }
-    return count;
-  }
-
-  bool get _isInitialLoading =>
-      _isLoadingH2Stations ||
-      _isLoadingEvStations ||
-      _isLoadingParkingLots;
+  int get _totalMappableMarkerCount => _mapController.totalMappableCount;
 
   // --- 라이프사이클 ---
   @override
   void initState() {
     super.initState();
-    _loadAllStations();
+    _mapController.addListener(_onMapControllerChanged);
+    _mapController.loadAllStations();
     WidgetsBinding.instance.addPostFrameCallback((_) => _prepareClusterIcon());
   }
 
@@ -203,6 +178,8 @@ class _MapScreenState extends State<MapScreen> {
   void dispose() {
     _controller = null;
     _searchController.dispose(); // 검색창 컨트롤러 정리
+    _mapController.removeListener(_onMapControllerChanged);
+    _mapController.dispose();
     super.dispose();
   }
 
@@ -226,6 +203,14 @@ class _MapScreenState extends State<MapScreen> {
     }
   }
 
+  void _onMapControllerChanged() {
+    // 데이터/필터 변경 시 UI와 마커를 갱신한다.
+    if (_isMapLoaded && _controller != null) {
+      unawaited(_renderStationMarkers());
+    }
+    if (mounted) setState(() {});
+  }
+
   // --- build & UI 구성 ---
   @override
   Widget build(BuildContext context) {
@@ -236,6 +221,7 @@ class _MapScreenState extends State<MapScreen> {
     final double bottomInset = MediaQuery.of(context).padding.bottom;
     final double mapBottomPadding =
         navBarHeight + navBarBottomMargin + bottomInset;
+    final bool isLoading = _mapController.isLoading;
 
     return Scaffold(
       extendBody: true, // 바 뒤로 본문을 확장해서 지도가 바 아래까지 깔리도록 함
@@ -256,6 +242,7 @@ class _MapScreenState extends State<MapScreen> {
               /// ⭐ 클러스터 옵션 (플러그인 기본값 사용 — iOS/Android 동일 동작)
               clusterOptions: _clusterOptions,
               onMapReady: _handleMapReady,
+              onMapLoaded: _handleMapLoaded,
             ),
 
             /// 🔍 상단 검색창 + 자동완성 리스트
@@ -270,28 +257,37 @@ class _MapScreenState extends State<MapScreen> {
             Positioned(
               top: 95, // 검색창 아래
               left: 16,
-              child: _buildFilterBar(),
+              child: FilterBar(
+                showH2: _mapController.showH2,
+                showEv: _mapController.showEv,
+                showParking: _mapController.showParking,
+                h2Color: _h2MarkerBaseColor,
+                evColor: _evMarkerBaseColor,
+                parkingColor: _parkingMarkerBaseColor,
+                onToggleH2: _mapController.toggleH2,
+                onToggleEv: _mapController.toggleEv,
+                onToggleParking: _mapController.toggleParking,
+              ),
             ),
 
-            if (_isInitialLoading) _buildLoadingBanner(),
+            if (isLoading) const LoadingBanner(),
             // 🔕 에러 배너 잠시 숨김 (전기충전소 에러 떠도 검색창 가리지 않도록)
             // if (_stationError != null) _buildErrorBanner(),
-            if (!_isInitialLoading && _totalMappableMarkerCount > 0)
-              _buildStationsBadge(),
-            if (!_isInitialLoading &&
+            if (!isLoading && _totalMappableMarkerCount > 0)
+              StationsBadge(count: _totalMappableMarkerCount),
+            if (!isLoading &&
                 _stationError == null &&
                 _totalMappableMarkerCount == 0)
-              _buildInfoBanner(
-                icon: Icons.info_outline,
-                message: '표시할 충전/주차 위치 데이터가 없습니다.',
-              ),
+              const InfoBanner(
+                  icon: Icons.info_outline,
+                  message: '표시할 충전/주차 위치 데이터가 없습니다.'),
           ],
         ),
       ),
       floatingActionButton: Padding(
         padding: const EdgeInsets.only(bottom: 24, right: 4),
         child: FloatingActionButton(
-          onPressed: _isManualRefreshing ? null : _onCenterButtonPressed,
+          onPressed: _isManualRefreshing ? null : _refreshStations,
           child: _isManualRefreshing
               ? const SizedBox(
                   width: 20,
@@ -312,101 +308,38 @@ class _MapScreenState extends State<MapScreen> {
 
   /// 🔍 상단 검색창 UI + 유사 이름 리스트
   Widget _buildSearchBar() {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        // 검색창 본체
-        Container(
-          height: 44,
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(999),
-            border: Border.all(
-              color: const Color(0xFF5A3FFF), // 보라색 테두리
-              width: 1,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.08),
-                blurRadius: 8,
-                offset: const Offset(0, 2),
-              ),
-            ],
-          ),
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: _searchController,
-                  decoration: const InputDecoration(
-                    border: InputBorder.none,
-                    hintText: '충전소 이름으로 검색',
-                    isCollapsed: true,
-                  ),
-                  textInputAction: TextInputAction.search,
-                  onSubmitted: _onSearchSubmitted,
-                  onChanged: _onSearchChanged, // 🔍 입력할 때마다 유사 이름 검색
-                ),
-              ),
-              GestureDetector(
-                onTap: () => _onSearchSubmitted(_searchController.text),
-                child: const Icon(
-                  Icons.search,
-                  size: 20,
-                  color: Color(0xFF5A3FFF),
-                ),
-              ),
-            ],
-          ),
-        ),
-
-        // 유사 이름 자동완성 리스트
-        if (_searchResults.isNotEmpty) const SizedBox(height: 6),
-        if (_searchResults.isNotEmpty)
-          Container(
-            // 검색창과 같은 폭, 조금 둥글게
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(16),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.08),
-                  blurRadius: 8,
-                  offset: const Offset(0, 2),
-                ),
-              ],
-            ),
-            constraints: const BoxConstraints(
-              // 너무 길어지지 않게 최대 높이 제한
-              maxHeight: 220,
-            ),
-            child: ListView.builder(
-              padding: EdgeInsets.zero,
-              shrinkWrap: true,
-              physics: const BouncingScrollPhysics(),
-              itemCount: _searchResults.length,
-              itemBuilder: (context, index) {
-                final item = _searchResults[index];
-                return ListTile(
-                  dense: true,
-                  leading: Icon(
-                    item.isH2 ? Icons.local_gas_station : Icons.ev_station,
-                    size: 18,
-                    color: item.isH2 ? Colors.blue : Colors.green,
-                  ),
-                  title: Text(
-                    item.name,
-                    style: const TextStyle(fontSize: 14),
-                  ),
-                  onTap: () => _onTapSearchCandidate(item),
-                );
-              },
-            ),
-          ),
-      ],
+    return SearchBarSection(
+      controller: _searchController,
+      onSubmitted: _onSearchSubmitted,
+      onClear: () {
+        setState(() {
+          _searchController.clear();
+          _searchResults = [];
+        });
+      },
+      searchResults: _searchResults
+          .map((e) => SearchResultItem(
+                name: e.name,
+                subtitle: e.isH2 ? '[H2]' : '[EV]',
+                lat: e.lat,
+                lng: e.lng,
+                h2: e.h2,
+                ev: e.ev,
+              ))
+          .toList(),
+      onResultTap: (item) {
+        if (item.h2 != null) {
+          _showH2StationBottomSheet(item.h2 as H2Station);
+        } else if (item.ev != null) {
+          _showEvStationBottomSheet(item.ev as EVStation);
+        }
+      },
+      onResultMarkerTap: (item) => _focusTo(item.lat, item.lng),
+      searchError: _searchError,
+      isSearching: _isSearching,
     );
   }
+
 
   /// 🔍 타이핑할 때마다 유사 이름 후보 찾아서 리스트에 넣기
   void _onSearchChanged(String raw) {
@@ -516,11 +449,7 @@ class _MapScreenState extends State<MapScreen> {
     if (foundH2 != null) {
       final lat = foundH2.latitude!;
       final lng = foundH2.longitude!;
-      _controller?.updateCamera(
-        NCameraUpdate.fromCameraPosition(
-          NCameraPosition(target: NLatLng(lat, lng), zoom: 14),
-        ),
-      );
+      unawaited(_focusTo(lat, lng));
       FocusScope.of(context).unfocus();
       _showH2StationBottomSheet(foundH2);
       return;
@@ -538,11 +467,7 @@ class _MapScreenState extends State<MapScreen> {
     if (foundEv != null) {
       final lat = foundEv.latitude!;
       final lng = foundEv.longitude!;
-      _controller?.updateCamera(
-        NCameraUpdate.fromCameraPosition(
-          NCameraPosition(target: NLatLng(lat, lng), zoom: 14),
-        ),
-      );
+      unawaited(_focusTo(lat, lng));
       FocusScope.of(context).unfocus();
       _showEvStationBottomSheet(foundEv);
       return;
@@ -551,6 +476,16 @@ class _MapScreenState extends State<MapScreen> {
     // 3) 둘 다 없으면 안내
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text('"$query" 이름의 충전소를 찾을 수 없습니다.')),
+    );
+  }
+
+  Future<void> _focusTo(double lat, double lng) async {
+    final controller = _controller;
+    if (controller == null) return;
+    await controller.updateCamera(
+      NCameraUpdate.fromCameraPosition(
+        NCameraPosition(target: NLatLng(lat, lng), zoom: 14),
+      ),
     );
   }
 
@@ -612,7 +547,7 @@ class _MapScreenState extends State<MapScreen> {
                 ),
                 const SizedBox(width: 12),
                 TextButton(
-                  onPressed: _loadStations,
+                  onPressed: _refreshStations,
                   child: const Text('재시도'),
                 ),
               ],
@@ -624,109 +559,15 @@ class _MapScreenState extends State<MapScreen> {
   }
 
   /// 사용자에게 부가 정보를 보여주는 공용 배너.
-  Widget _buildInfoBanner({required IconData icon, required String message}) {
-    return Align(
-      alignment: Alignment.topCenter,
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Material(
-          elevation: 4,
-          borderRadius: BorderRadius.circular(12),
-          color: Colors.white,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(icon, color: Colors.blueGrey),
-                const SizedBox(width: 12),
-                Text(
-                  message,
-                  style: const TextStyle(fontWeight: FontWeight.w600),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
+  Widget _buildInfoBanner({required IconData icon, required String message}) =>
+      const SizedBox(); // migrated to InfoBanner widget
 
   /// 현재 표시 중인 마커의 개수를 보여주는 칩.
-  Widget _buildStationsBadge() {
-    return Positioned(
-      top: 0, // 🔹 필터 바 아래쪽 위치
-      left: 16,
-      child: Chip(
-        avatar: const Icon(Icons.ev_station, size: 16, color: Colors.white),
-        label:
-        Text('표시 중: $_totalMappableMarkerCount개 위치(H2/EV/주차)'),
-        backgroundColor: Colors.black.withOpacity(0.7),
-        labelStyle: const TextStyle(color: Colors.white),
-        padding: const EdgeInsets.symmetric(horizontal: 12),
-      ),
-    );
-  }
+  Widget _buildStationsBadge() => const SizedBox(); // migrated to StationsBadge
 
   /// ⭐ 지도 위 H2 / EV / 주차 필터 토글 바
   Widget _buildFilterBar() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.96),
-        borderRadius: BorderRadius.circular(999),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.08),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          _buildFilterIcon(
-            active: _showH2,
-            icon: Icons.local_gas_station,
-            color: _h2MarkerBaseColor,
-            label: 'H2',
-            onTap: () {
-              setState(() {
-                _showH2 = !_showH2;
-              });
-              unawaited(_renderStationMarkers());
-            },
-          ),
-          const SizedBox(width: 8),
-          _buildFilterIcon(
-            active: _showEv,
-            icon: Icons.ev_station,
-            color: _evMarkerBaseColor,
-            label: 'EV',
-            onTap: () {
-              setState(() {
-                _showEv = !_showEv;
-              });
-              unawaited(_renderStationMarkers());
-            },
-          ),
-          const SizedBox(width: 8),
-          _buildFilterIcon(
-            active: _showParking,
-            icon: Icons.local_parking,
-            color: _parkingMarkerBaseColor,
-            label: 'P',
-            onTap: () {
-              setState(() {
-                _showParking = !_showParking;
-              });
-              unawaited(_renderStationMarkers());
-            },
-          ),
-        ],
-      ),
-    );
+    return const SizedBox(); // moved to FilterBar widget
   }
 
   /// 필터 아이콘 하나 (동그란 버튼 + 라벨)
@@ -737,38 +578,7 @@ class _MapScreenState extends State<MapScreen> {
     required String label,
     required VoidCallback onTap,
   }) {
-    final bgColor = active ? color : Colors.grey.shade300;
-    final iconColor = active ? Colors.white : Colors.grey.shade700;
-
-    return GestureDetector(
-      onTap: onTap,
-      child: Row(
-        children: [
-          Container(
-            width: 32,
-            height: 32,
-            decoration: BoxDecoration(
-              color: bgColor,
-              shape: BoxShape.circle,
-            ),
-            child: Icon(
-              icon,
-              size: 18,
-              color: iconColor,
-            ),
-          ),
-          const SizedBox(width: 4),
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              color: active ? Colors.black87 : Colors.grey,
-            ),
-          ),
-        ],
-      ),
-    );
+    return const SizedBox(); // migrated to FilterBar widget
   }
 
   /// 공통 필드 UI를 구성해 코드 중복을 줄인다.
@@ -810,6 +620,11 @@ class _MapScreenState extends State<MapScreen> {
     unawaited(_renderStationMarkers());
   }
 
+  void _handleMapLoaded() {
+    _isMapLoaded = true;
+    unawaited(_renderStationMarkers());
+  }
+
   /// 지도에 표시할 모든 마커를 다시 생성하고 등록한다.
   Future<void> _renderStationMarkers() async {
     final controller = _controller;
@@ -824,49 +639,31 @@ class _MapScreenState extends State<MapScreen> {
       // 초기 로딩 동안은 컨트롤러 정리가 실패할 수 있으므로 무시한다.
     }
 
-    final overlays = <NClusterableMarker>{};
-
-    if (_showH2) {
-      overlays.addAll(
-        _h2StationsWithCoordinates.map(
-          (station) => buildH2Marker(
-            station: station,
-            tint: _h2MarkerBaseColor,
-            statusColor: _h2StatusColor,
-            onTap: _showH2StationBottomSheet,
-          ),
-        ),
-      );
-    }
-    if (_showEv) {
-      overlays.addAll(
-        _evStationsWithCoordinates.map(
-          (station) => buildEvMarker(
-            station: station,
-            tint: _evMarkerBaseColor,
-            statusColor: _evStatusColor,
-            onTap: _showEvStationBottomSheet,
-          ),
-        ),
-      );
-    }
-    if (_showParking) {
-      overlays.addAll(
-        _parkingLotsWithCoordinates.map(
-          (lot) => buildParkingMarker(
-            lot: lot,
-            tint: _parkingMarkerBaseColor,
-            onTap: _showParkingLotBottomSheet,
-          ),
-        ),
-      );
-    }
+    final overlays = _mapController.buildMarkers(
+      h2Builder: (station) => buildH2Marker(
+        station: station,
+        tint: _h2MarkerBaseColor,
+        statusColor: _h2StatusColor,
+        onTap: _showH2StationBottomSheet,
+      ),
+      evBuilder: (station) => buildEvMarker(
+        station: station,
+        tint: _evMarkerBaseColor,
+        statusColor: _evStatusColor,
+        onTap: _showEvStationBottomSheet,
+      ),
+      parkingBuilder: (lot) => buildParkingMarker(
+        lot: lot,
+        tint: _parkingMarkerBaseColor,
+        onTap: _showParkingLotBottomSheet,
+      ),
+    );
 
     debugPrint(
       '🎯 Render markers (filtered): '
-          'H2=${_showH2 ? _h2StationsWithCoordinates.length : 0}, '
-          'EV=${_showEv ? _evStationsWithCoordinates.length : 0}, '
-          'P=${_showParking ? _parkingLotsWithCoordinates.length : 0}',
+          'H2=${_mapController.showH2 ? _mapController.h2StationsWithCoords.length : 0}, '
+          'EV=${_mapController.showEv ? _mapController.evStationsWithCoords.length : 0}, '
+          'P=${_mapController.showParking ? _mapController.parkingLotsWithCoords.length : 0}',
     );
 
     if (overlays.isEmpty) return;
@@ -876,101 +673,22 @@ class _MapScreenState extends State<MapScreen> {
         // iOS에서 클러스터 마커가 갱신되지 않는 경우가 있어 강제 새로고침.
         await controller.forceRefresh();
       }
+      debugPrint('✅ Added ${overlays.length} clusterable markers');
     } catch (error) {
       debugPrint('Marker overlay add failed: $error');
     }
   }
 
-  // --- 데이터 로딩 ---
-  /// 수소/전기 충전소를 동시에 불러오고 로딩 및 오류 상태를 초기화한다.
-  Future<void> _loadAllStations() async {
-    setState(() {
-      _isLoadingH2Stations = true;
-      _isLoadingEvStations = true;
-      _isLoadingParkingLots = true;
-      _stationError = null;
-    });
-    await Future.wait([
-      _loadH2Stations(),
-      _loadEvStations(),
-      _loadParkingLotsAll(),
-    ]);
-  }
-
-  Future<void> _loadStations() async {
-    await _loadAllStations();
-  }
-
-  /// 수소 충전소 API를 호출하고 결과를 지도에 반영한다.
-  Future<void> _loadH2Stations() async {
-    try {
-      final stations = await h2StationApi.fetchStations();
-      if (!mounted) return;
-      setState(() {
-        _h2Stations = stations;
-        _isLoadingH2Stations = false;
-      });
+  Future<void> _refreshStations() async {
+    if (_isManualRefreshing) return;
+    setState(() => _isManualRefreshing = true);
+    await _mapController.loadAllStations();
+    if (!mounted) return;
+    setState(() => _isManualRefreshing = false);
+    if (_isMapLoaded && _controller != null) {
       unawaited(_renderStationMarkers());
-    } catch (error) {
-      if (!mounted) return;
-      setState(() {
-        _isLoadingH2Stations = false;
-        _stationError ??= '수소 충전소 데이터를 불러오지 못했습니다.';
-      });
-      debugPrint('H2 station fetch failed: $error');
     }
   }
-
-  /// 전기 충전소 API를 호출하고 지도에 반영한다.
-  Future<void> _loadEvStations() async {
-    try {
-      final stations = await evStationApi.fetchStations();
-      if (!mounted) return;
-      setState(() {
-        _evStations = stations;
-        _isLoadingEvStations = false;
-      });
-      unawaited(_renderStationMarkers());
-    } catch (error) {
-      if (!mounted) return;
-      setState(() {
-        _isLoadingEvStations = false;
-        _stationError ??= '전기 충전소 데이터를 불러오지 못했습니다.';
-      });
-      debugPrint('EV station fetch failed: $error');
-    }
-  }
-
-
-  /// 주차장 전체 목록을 불러온다.
-  Future<void> _loadParkingLotsAll() async {
-    setState(() {
-      _isLoadingParkingLots = true;
-      _stationError = null;
-    });
-
-    try {
-      final lots = await parkingLotApi.fetchAll(size: 1000);
-      final withCoords = lots
-          .where((e) => e.latitude != null && e.longitude != null)
-          .length;
-      if (!mounted) return;
-      setState(() {
-        _parkingLots = lots;
-        _isLoadingParkingLots = false;
-      });
-      debugPrint('Parking lots with coords: $withCoords');
-      unawaited(_renderStationMarkers());
-    } catch (error) {
-      if (!mounted) return;
-      setState(() {
-        _isLoadingParkingLots = false;
-        _stationError ??= '주차장 데이터를 불러오지 못했습니다.';
-      });
-      debugPrint('Parking lot fetch failed: $error');
-    }
-  }
-
 
   // --- 상태 색상 매핑 ---
   /// 수소 충전소 운영 상태 텍스트를 컬러로 매핑한다.
@@ -1328,26 +1046,6 @@ class _MapScreenState extends State<MapScreen> {
 
   /// 새로고침 FAB - 서버 상태를 다시 요청한다.
   void _onCenterButtonPressed() async {
-    if (_isManualRefreshing) return;
-    setState(() => _isManualRefreshing = true);
-    debugPrint('Manual refresh started');
-
-    try {
-      await _loadAllStations();
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('새로고침에 실패했습니다. 다시 시도하세요.')),
-        );
-      }
-      debugPrint('Manual refresh failed: $e');
-    } finally {
-      if (mounted) {
-        setState(() => _isManualRefreshing = false);
-      } else {
-        _isManualRefreshing = false;
-      }
-      debugPrint('Manual refresh ended');
-    }
+    await _refreshStations();
   }
 }
