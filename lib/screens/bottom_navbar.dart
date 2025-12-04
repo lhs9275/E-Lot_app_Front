@@ -130,21 +130,25 @@ class MainBottomNavBar extends StatelessWidget {
   Widget _buildCenterImageItem(BuildContext context) {
     return GestureDetector(
       onTap: () {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('안녕하세요! 저는 E-Lot 마스코트입니다! 👋')),
+
+        // 1. 만약 현재 화면이 이미 지도(0번)라면? -> 아무것도 안 함 (새로고침 방지)
+        if (currentIndex == 0) return;
+
+        // 2. 지도 화면(MapScreen)으로 이동
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (_) => const MapScreen()),
         );
       },
       child: Container(
-        width: 100, // 🚀 크기를 100으로 대폭 키움
+        width: 100,
         height: 100,
         decoration: const BoxDecoration(
           shape: BoxShape.circle,
         ),
         child: Image.asset(
           'lib/assets/icons/mascot_character/sparky.png',
-          fit: BoxFit.contain, // 박스 크기(100x100)에 맞춰 비율 유지하며 꽉 채움
+          fit: BoxFit.contain,
         ),
       ),
     );
   }
-}
