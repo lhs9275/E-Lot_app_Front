@@ -3,8 +3,8 @@ import 'package:flutter/material.dart';
 
 // 🔁 각 탭이 열어줄 화면들 import
 import 'map.dart';
-import 'favorite.dart';
-import 'mypage.dart';
+import 'user/favorite.dart';
+import 'user/mypage.dart';
 
 class MainBottomNavBar extends StatelessWidget {
   /// 현재 선택된 탭 index (0: 지도, 1: 근처, 2: 즐겨찾기, 3: 내 정보)
@@ -23,18 +23,14 @@ class MainBottomNavBar extends StatelessWidget {
   void _handleTap(BuildContext context, int index) {
     if (index == currentIndex) return;
 
-    if (index == 1) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('충전소 찾기 기능은 준비 중입니다.')),
-      );
-      return;
-    }
-
     Widget target;
     switch (index) {
       case 0: // 지도 (차 아이콘)
         target = const MapScreen();
         break;
+      case 1: // 추천 랭킹
+        Navigator.of(context).pushReplacementNamed('/ranking');
+        return;
       case 2: // 즐겨찾기 (리스트 아이콘)
         target = const FavoritesPage();
         break;
@@ -56,7 +52,7 @@ class MainBottomNavBar extends StatelessWidget {
       child: Container(
         // 👆 튀어나올 공간 확보를 위해 전체 컨테이너 높이를 넉넉히 줌 (85~90)
         height: 90,
-        margin: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+        margin: const EdgeInsets.fromLTRB(20, 0, 20, 10), // 바를 조금 더 아래로 내려서 공간 확보
         child: Stack(
           alignment: Alignment.bottomCenter, // 하단 중앙 정렬
           clipBehavior: Clip.none, // 🚀 중요: 캐릭터가 영역 밖으로 튀어나가도 잘리지 않게 함
@@ -65,7 +61,7 @@ class MainBottomNavBar extends StatelessWidget {
             Container(
               height: 72, // 바 높이
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: Colors.white.withOpacity(0.92), // 살짝 비춰서 지도와 겹침을 느낄 수 있게
                 borderRadius: BorderRadius.circular(36),
                 boxShadow: [
                   BoxShadow(
@@ -130,25 +126,21 @@ class MainBottomNavBar extends StatelessWidget {
   Widget _buildCenterImageItem(BuildContext context) {
     return GestureDetector(
       onTap: () {
-
-        // 1. 만약 현재 화면이 이미 지도(0번)라면? -> 아무것도 안 함 (새로고침 방지)
-        if (currentIndex == 0) return;
-
-        // 2. 지도 화면(MapScreen)으로 이동
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const MapScreen()),
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('안녕하세요! 저는 E-Lot 마스코트입니다! 👋')),
         );
       },
       child: Container(
-        width: 100,
+        width: 100, // 🚀 크기를 100으로 대폭 키움
         height: 100,
         decoration: const BoxDecoration(
           shape: BoxShape.circle,
         ),
         child: Image.asset(
           'lib/assets/icons/mascot_character/sparky.png',
-          fit: BoxFit.contain,
+          fit: BoxFit.contain, // 박스 크기(100x100)에 맞춰 비율 유지하며 꽉 채움
         ),
       ),
     );
   }
+}

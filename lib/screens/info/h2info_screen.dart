@@ -1,8 +1,8 @@
 // lib/screens/h2info_screen.dart
 
 import 'package:flutter/material.dart';
-import '../models/h2_station.dart';
-import '../services/h2_station_api_service.dart';
+import '../../models/h2_station.dart';
+import '../../services/h2_station_api_service.dart';
 
 class InfoScreen extends StatefulWidget {
   const InfoScreen({super.key});

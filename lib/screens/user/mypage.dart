@@ -1,4 +1,4 @@
-// lib/screens/mypage.dart
+﻿// lib/screens/mypage.dart
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -7,8 +7,9 @@ import 'package:http/http.dart' as http;
 
 import 'package:psp2_fn/auth/token_storage.dart';
 import 'favorite.dart'; // ⭐ 즐겨찾기 페이지
-import 'bottom_navbar.dart'; // ✅ 공통 하단 네비게이션 바
-import 'map.dart';
+import '../bottom_navbar.dart'; // ✅ 공통 하단 네비게이션 바
+import '../map.dart';
+import 'settings.dart';
 
 class MyPageScreen extends StatefulWidget {
   const MyPageScreen({super.key});
@@ -165,7 +166,9 @@ class _MyPageScreenState extends State<MyPageScreen> {
                   ),
                   IconButton(
                     onPressed: () {
-                      // TODO: 설정 페이지
+                      Navigator.of(context).push(
+                        MaterialPageRoute(builder: (_) => const SettingsScreen()),
+                      );
                     },
                     icon: const Icon(Icons.settings_outlined),
                     splashRadius: 22,
@@ -203,8 +206,10 @@ class _MyPageScreenState extends State<MyPageScreen> {
                   Expanded(
                     child: _QuickMenuCard(
                       icon: Icons.emoji_events_rounded,
-                      label: '랭킹',
-                      onTap: () => _showComingSoon('랭킹'),
+                      label: '추천, 랭킹',
+                      onTap: () {
+                        Navigator.of(context).pushNamed('/ranking');
+                      },
                     ),
                   ),
                 ],
@@ -655,3 +660,5 @@ class MyReportsPage extends StatelessWidget {
     );
   }
 }
+
+

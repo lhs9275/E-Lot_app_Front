@@ -5,7 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_naver_map/flutter_naver_map.dart';
 import 'package:kakao_flutter_sdk_user/kakao_flutter_sdk_user.dart';
-import 'screens/welcom.dart';
+import 'screens/auth/welcome_screen.dart';
+import 'screens/etc/ranking.dart';
 import 'services/h2_station_api_service.dart';
 import 'services/ev_station_api_service.dart';
 import 'services/parking_lot_api_service.dart';
@@ -169,6 +170,9 @@ class MyApp extends StatelessWidget {
         isKakaoConfigured: isKakaoConfigured,
         kakaoConfigError: kakaoConfigError,
       ),
+      routes: {
+        '/ranking': (_) => const RankingScreen(),
+      },
     );
   }
 }

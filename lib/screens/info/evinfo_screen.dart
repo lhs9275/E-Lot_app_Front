@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import '../models/ev_station.dart';
-import '../services/ev_station_api_service.dart';
+import '../../models/ev_station.dart';
+import '../../services/ev_station_api_service.dart';
 
 class EvInfoScreen extends StatefulWidget {
   const EvInfoScreen({super.key});

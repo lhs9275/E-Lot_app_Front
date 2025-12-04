@@ -48,6 +48,7 @@ class AuthApi {
           accessToken: accessToken,
           refreshToken: refreshToken,
         );
+        return;
       } else {
         // 서버에서 401 등 에러 내려줄 때
         throw Exception(
@@ -55,7 +56,7 @@ class AuthApi {
         );
       }
     } catch (e) {
-      rethrow;
+      throw Exception('Kakao login failed: $e');
     }
   }
 
