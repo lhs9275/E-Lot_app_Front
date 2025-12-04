@@ -73,35 +73,3 @@ class InfoBanner extends StatelessWidget {
   }
 }
 
-class StationsBadge extends StatelessWidget {
-  const StationsBadge({super.key, required this.count});
-
-  final int count;
-
-  @override
-  Widget build(BuildContext context) {
-    return Positioned(
-      right: 12,
-      bottom: 24,
-      child: Material(
-        elevation: 8,
-        borderRadius: BorderRadius.circular(12),
-        color: Colors.white,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(Icons.pin_drop_outlined, color: Colors.black87),
-              const SizedBox(width: 8),
-              Text(
-                '총 $count개 표시됨',
-                style: const TextStyle(fontWeight: FontWeight.w600),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}

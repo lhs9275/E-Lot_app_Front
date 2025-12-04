@@ -120,10 +120,12 @@ class _MapScreenState extends State<MapScreen> {
 
   // 검색창 컨트롤러
   final TextEditingController _searchController = TextEditingController();
+  final FocusNode _searchFocusNode = FocusNode();
 
   // 🔍 자동완성 후보 목록
   List<_SearchCandidate> _searchResults = [];
   bool _isSearching = false;
+  bool _isSearchFocused = false;
   String? _searchError;
 
   bool _isManualRefreshing = false;
@@ -155,6 +157,32 @@ class _MapScreenState extends State<MapScreen> {
   NaverMapClusteringOptions get _clusterOptions => defaultClusterOptions;
 
   String? get _stationError => _mapController.stationError;
+  late final List<DynamicIslandAction> _quickActions = [
+    DynamicIslandAction(
+      id: 'refresh',
+      label: '데이터 새로고침',
+      icon: Icons.refresh_rounded,
+      color: Colors.white,
+    ),
+    DynamicIslandAction(
+      id: 'h2_only',
+      label: 'H2만 보기',
+      icon: Icons.local_gas_station,
+      color: _h2MarkerBaseColor,
+    ),
+    DynamicIslandAction(
+      id: 'ev_only',
+      label: 'EV만 보기',
+      icon: Icons.ev_station,
+      color: _evMarkerBaseColor,
+    ),
+    DynamicIslandAction(
+      id: 'all',
+      label: '전체 보기',
+      icon: Icons.layers_outlined,
+      color: _parkingMarkerBaseColor,
+    ),
+  ];
 
   Iterable<H2Station> get _h2StationsWithCoordinates =>
       _mapController.h2StationsWithCoords;
@@ -171,6 +199,12 @@ class _MapScreenState extends State<MapScreen> {
     super.initState();
     _mapController.addListener(_onMapControllerChanged);
     _mapController.loadAllStations();
+    _searchFocusNode.addListener(() {
+      if (!mounted) return;
+      setState(() {
+        _isSearchFocused = _searchFocusNode.hasFocus;
+      });
+    });
     WidgetsBinding.instance.addPostFrameCallback((_) => _prepareClusterIcon());
   }
 
@@ -178,6 +212,7 @@ class _MapScreenState extends State<MapScreen> {
   void dispose() {
     _controller = null;
     _searchController.dispose(); // 검색창 컨트롤러 정리
+    _searchFocusNode.dispose();
     _mapController.removeListener(_onMapControllerChanged);
     _mapController.dispose();
     super.dispose();
@@ -250,37 +285,26 @@ class _MapScreenState extends State<MapScreen> {
               top: 45, // ⬅️ 살짝 아래로 내린 위치
               left: 16,
               right: 16,
-              child: _buildSearchBar(),
-            ),
-
-            /// ⭐ H2 / EV / 주차 필터 토글 바
-            Positioned(
-              top: 95, // 검색창 아래
-              left: 16,
-              child: FilterBar(
-                showH2: _mapController.showH2,
-                showEv: _mapController.showEv,
-                showParking: _mapController.showParking,
-                h2Color: _h2MarkerBaseColor,
-                evColor: _evMarkerBaseColor,
-                parkingColor: _parkingMarkerBaseColor,
-                onToggleH2: _mapController.toggleH2,
-                onToggleEv: _mapController.toggleEv,
-                onToggleParking: _mapController.toggleParking,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _buildSearchBar(),
+                  const SizedBox(height: 12),
+                  FilterBar(
+                    showH2: _mapController.showH2,
+                    showEv: _mapController.showEv,
+                    showParking: _mapController.showParking,
+                    h2Color: _h2MarkerBaseColor,
+                    evColor: _evMarkerBaseColor,
+                    parkingColor: _parkingMarkerBaseColor,
+                    onToggleH2: _mapController.toggleH2,
+                    onToggleEv: _mapController.toggleEv,
+                    onToggleParking: _mapController.toggleParking,
+                  ),
+                ],
               ),
             ),
-
-            if (isLoading) const LoadingBanner(),
-            // 🔕 에러 배너 잠시 숨김 (전기충전소 에러 떠도 검색창 가리지 않도록)
-            // if (_stationError != null) _buildErrorBanner(),
-            if (!isLoading && _totalMappableMarkerCount > 0)
-              StationsBadge(count: _totalMappableMarkerCount),
-            if (!isLoading &&
-                _stationError == null &&
-                _totalMappableMarkerCount == 0)
-              const InfoBanner(
-                  icon: Icons.info_outline,
-                  message: '표시할 충전/주차 위치 데이터가 없습니다.'),
           ],
         ),
       ),
@@ -310,6 +334,7 @@ class _MapScreenState extends State<MapScreen> {
   Widget _buildSearchBar() {
     return SearchBarSection(
       controller: _searchController,
+      focusNode: _searchFocusNode,
       onSubmitted: _onSearchSubmitted,
       onClear: () {
         setState(() {
@@ -337,6 +362,9 @@ class _MapScreenState extends State<MapScreen> {
       onResultMarkerTap: (item) => _focusTo(item.lat, item.lng),
       searchError: _searchError,
       isSearching: _isSearching,
+      showDynamicIsland: _isSearchFocused,
+      actions: _quickActions,
+      onActionTap: _handleQuickAction,
     );
   }
 
@@ -477,6 +505,37 @@ class _MapScreenState extends State<MapScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text('"$query" 이름의 충전소를 찾을 수 없습니다.')),
     );
+  }
+
+  void _handleQuickAction(DynamicIslandAction action) {
+    if (!mounted) return;
+    switch (action.id) {
+      case 'refresh':
+        unawaited(_refreshStations());
+        break;
+      case 'h2_only':
+        _setFilters(h2: true, ev: false, parking: false);
+        break;
+      case 'ev_only':
+        _setFilters(h2: false, ev: true, parking: false);
+        break;
+      case 'all':
+        _setFilters(h2: true, ev: true, parking: true);
+        break;
+      default:
+        break;
+    }
+    FocusScope.of(context).unfocus();
+  }
+
+  void _setFilters({
+    required bool h2,
+    required bool ev,
+    required bool parking,
+  }) {
+    if (_mapController.showH2 != h2) _mapController.toggleH2();
+    if (_mapController.showEv != ev) _mapController.toggleEv();
+    if (_mapController.showParking != parking) _mapController.toggleParking();
   }
 
   Future<void> _focusTo(double lat, double lng) async {
