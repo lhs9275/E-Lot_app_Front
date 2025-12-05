@@ -114,7 +114,7 @@ class MapScreen extends StatefulWidget {
 class _MapScreenState extends State<MapScreen> {
   // --- 상태 필드들 ---
   final MapController _mapController =
-      MapController(h2Api: h2StationApi, evApi: evStationApi, parkingApi: parkingLotApi);
+  MapController(h2Api: h2StationApi, evApi: evStationApi, parkingApi: parkingLotApi);
   NaverMapController? _controller;
   NOverlayImage? _clusterIcon;
 
@@ -314,10 +314,10 @@ class _MapScreenState extends State<MapScreen> {
           onPressed: _isManualRefreshing ? null : _refreshStations,
           child: _isManualRefreshing
               ? const SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(strokeWidth: 2.4),
-                )
+            width: 20,
+            height: 20,
+            child: CircularProgressIndicator(strokeWidth: 2.4),
+          )
               : const Icon(Icons.refresh),
         ),
       ),
@@ -344,13 +344,13 @@ class _MapScreenState extends State<MapScreen> {
       },
       searchResults: _searchResults
           .map((e) => SearchResultItem(
-                name: e.name,
-                subtitle: e.isH2 ? '[H2]' : '[EV]',
-                lat: e.lat,
-                lng: e.lng,
-                h2: e.h2,
-                ev: e.ev,
-              ))
+        name: e.name,
+        subtitle: e.isH2 ? '[H2]' : '[EV]',
+        lat: e.lat,
+        lng: e.lng,
+        h2: e.h2,
+        ev: e.ev,
+      ))
           .toList(),
       onResultTap: (item) {
         if (item.h2 != null) {
@@ -912,7 +912,6 @@ class _MapScreenState extends State<MapScreen> {
                             builder: (_) => ReviewPage(
                               stationId: station.stationId,
                               placeName: station.stationName,
-                              imageUrl: _defaultStationImageUrl,
                             ),
                           ),
                         );
@@ -1023,7 +1022,6 @@ class _MapScreenState extends State<MapScreen> {
                         builder: (_) => ReviewPage(
                           stationId: station.stationId,
                           placeName: station.stationName,
-                          imageUrl: _defaultStationImageUrl,
                         ),
                       ),
                     );
