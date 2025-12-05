@@ -41,7 +41,3 @@ flutter_icons:
   android: true
   ios: true
   image_path: "lib/assets/icons/app_icon/app_icon.jpeg"
-
-dependency_overrides:
-  flutter_naver_map:
-    path: plugins/flutter_naver_map

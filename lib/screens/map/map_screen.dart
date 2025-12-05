@@ -8,7 +8,6 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_naver_map/flutter_naver_map.dart';
 import 'package:http/http.dart' as http;
 import 'cluster_options.dart';
-import 'cluster_options.dart';
 import 'map_controller.dart';
 import 'marker_builders.dart';
 import 'widgets/filter_bar.dart';
@@ -154,7 +153,29 @@ class _MapScreenState extends State<MapScreen> {
   static const Color _parkingMarkerBaseColor = Color(0xFFF59E0B); // 주차장 주황
 
   /// 클러스터 옵션 (기본값)
-  NaverMapClusteringOptions get _clusterOptions => defaultClusterOptions;
+  NaverMapClusteringOptions get _clusterOptions => NaverMapClusteringOptions(
+        mergeStrategy: const NClusterMergeStrategy(),
+        clusterMarkerBuilder: (info, marker) {
+          final icon = _clusterIcon;
+          if (icon != null) {
+            marker.setIcon(icon);
+            marker.setIconSize(const NSize(44, 44));
+          } else {
+            // 아이콘 준비 전에도 보이도록 틴트만 적용
+            marker.setIconTintColor(_h2MarkerBaseColor);
+          }
+          marker.setIsFlat(true);
+          marker.setAnchor(NPoint.relativeCenter);
+          marker.setCaption(
+            NOverlayCaption(
+              text: info.size.toString(),
+              textSize: 13,
+              color: Colors.white,
+              haloColor: Colors.black.withOpacity(0.35),
+            ),
+          );
+        },
+      );
 
   String? get _stationError => _mapController.stationError;
   late final List<DynamicIslandAction> _quickActions = [
