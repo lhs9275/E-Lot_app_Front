@@ -4,12 +4,15 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:http/http.dart' as http;
+import 'package:kakao_flutter_sdk_user/kakao_flutter_sdk_user.dart';
 
 import 'package:psp2_fn/auth/token_storage.dart';
-import 'favorite.dart'; // ⭐ 즐겨찾기 페이지
-import '../bottom_navbar.dart'; // ✅ 공통 하단 네비게이션 바
+import 'favorite.dart'; // ? 즐겨찾기 페이지
+import '../bottom_navbar.dart'; // ? 공통 하단 네비게이션 바
 import '../map.dart';
+import '../etc/report.dart';
 import 'settings.dart';
+import '../../storage/report_history_storage.dart';
 
 class MyPageScreen extends StatefulWidget {
   const MyPageScreen({super.key});
@@ -28,17 +31,13 @@ class _MyPageScreenState extends State<MyPageScreen> {
     _loadUserInfo();
   }
 
-  /// ✅ 로그인 유저 정보(/api/me)에서 이름 가져오기
+  /// ? 로그인 유저 정보(/api/me)에서 이름 가져오기
   Future<void> _loadUserInfo() async {
     final token = await TokenStorage.getAccessToken();
 
     // 토큰이 없으면 비로그인 상태
     if (token == null || token.isEmpty) {
-      if (!mounted) return;
-      setState(() {
-        _isLoggedIn = false;
-        _userName = null;
-      });
+      await _loadKakaoFallback();
       return;
     }
 
@@ -67,17 +66,48 @@ class _MyPageScreenState extends State<MyPageScreen> {
           _isLoggedIn = true;
           _userName = name.isNotEmpty ? name : null;
         });
+        if (_userName == null) {
+          await _loadKakaoFallback();
+        }
       } else {
         // 이름만 못 가져온 경우
         setState(() {
           _isLoggedIn = true;
           _userName = null;
         });
+        await _loadKakaoFallback();
       }
     } catch (e) {
       if (!mounted) return;
       setState(() {
         _isLoggedIn = true;
+        _userName = null;
+      });
+      await _loadKakaoFallback();
+    }
+  }
+
+  /// 카카오 프로필 닉네임을 가져와서 표시 (서버에서 이름이 비었을 때 보조용)
+  Future<void> _loadKakaoFallback() async {
+    try {
+      final user = await UserApi.instance.me();
+      final nick = user.kakaoAccount?.profile?.nickname;
+      if (!mounted) return;
+      if (nick != null && nick.isNotEmpty) {
+        setState(() {
+          _isLoggedIn = true;
+          _userName = nick;
+        });
+      } else {
+        setState(() {
+          _isLoggedIn = false;
+          _userName = null;
+        });
+      }
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _isLoggedIn = false;
         _userName = null;
       });
     }
@@ -108,7 +138,7 @@ class _MyPageScreenState extends State<MyPageScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFFF5F5F7),
 
-      /// 🔙 상단 뒤로가기 버튼
+      /// ?? 상단 뒤로가기 버튼
       appBar: AppBar(
         elevation: 0,
         backgroundColor: const Color(0xFFF5F5F7),
@@ -267,7 +297,7 @@ class _MyPageScreenState extends State<MyPageScreen> {
         ),
       ),
 
-      /// ✅ 하단 네비게이션 바
+      /// ? 하단 네비게이션 바
       bottomNavigationBar: const MainBottomNavBar(currentIndex: 3),
     );
   }
@@ -386,7 +416,7 @@ class _ListRow extends StatelessWidget {
   }
 }
 
-/// 🔹 내 리뷰 1개 데이터 (충전소 이름 + 별점 + ID)
+/// ?? 내 리뷰 1개 데이터 (충전소 이름 + 별점 + ID)
 class _MyReview {
   final int id;
   final String stationName;
@@ -414,7 +444,7 @@ class _MyReview {
   }
 }
 
-/// ⛏ 내 리뷰 목록 화면 (충전소 이름 + 별점, 삭제 가능)
+/// ? 내 리뷰 목록 화면 (충전소 이름 + 별점, 삭제 가능)
 class MyReviewsPage extends StatefulWidget {
   const MyReviewsPage({super.key});
 
@@ -615,12 +645,35 @@ class _MyReviewsPageState extends State<MyReviewsPage> {
                 ),
               ),
               subtitle: _buildStarRow(review.rating),
-              trailing: IconButton(
-                icon: const Icon(
-                  Icons.delete_outline,
-                  color: Colors.redAccent,
-                ),
-                onPressed: () => _deleteReview(review),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.flag_outlined, color: Colors.orange),
+                    onPressed: () async {
+                      final result = await Navigator.of(context).push<bool>(
+                        MaterialPageRoute(
+                          builder: (_) => ReportPage(
+                            reviewId: review.id,
+                            stationName: review.stationName,
+                          ),
+                        ),
+                      );
+                      if (result == true && mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text("신고가 접수되었습니다.")),
+                        );
+                      }
+                    },
+                  ),
+                  IconButton(
+                    icon: const Icon(
+                      Icons.delete_outline,
+                      color: Colors.redAccent,
+                    ),
+                    onPressed: () => _deleteReview(review),
+                  ),
+                ],
               ),
             ),
           );
@@ -630,35 +683,120 @@ class _MyReviewsPageState extends State<MyReviewsPage> {
   }
 }
 
-/// ⛏ 껍데기용: 내가 작성한 신고 리스트 화면
-class MyReportsPage extends StatelessWidget {
+/// 내가 작성한 신고 리스트 화면
+class MyReportsPage extends StatefulWidget {
   const MyReportsPage({super.key});
+
+  @override
+  State<MyReportsPage> createState() => _MyReportsPageState();
+}
+
+class _MyReportsPageState extends State<MyReportsPage> {
+  bool _loading = true;
+  List<LocalReport> _reports = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadReports();
+  }
+
+  Future<void> _loadReports() async {
+    final data = await ReportHistoryStorage.load();
+    if (!mounted) return;
+    setState(() {
+      _reports = data;
+      _loading = false;
+    });
+  }
+
+  String _formatTs(int timestampMs) {
+    final dt = DateTime.fromMillisecondsSinceEpoch(timestampMs).toLocal();
+    String two(int v) => v.toString().padLeft(2, '0');
+    return '${dt.year}-${two(dt.month)}-${two(dt.day)} ${two(dt.hour)}:${two(dt.minute)}';
+  }
+
+  Future<void> _deleteReport(int index) async {
+    await ReportHistoryStorage.removeAt(index);
+    await _loadReports();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('신고 내역을 삭제했습니다.')),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     final txt = Theme.of(context).textTheme;
     final cs = Theme.of(context).colorScheme;
 
+    if (_loading) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('신고 내역')),
+        body: const Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    if (_reports.isEmpty) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('신고 내역')),
+        body: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.report_problem_rounded, size: 40, color: cs.primary),
+              const SizedBox(height: 12),
+              Text('등록된 신고 내역이 없습니다.', style: txt.bodyMedium),
+              const SizedBox(height: 4),
+              Text(
+                '불편사항이 있다면 상세 화면에서 신고를 남겨주세요.',
+                style: txt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     return Scaffold(
       appBar: AppBar(title: const Text('신고 내역')),
-      body: Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.report_problem_rounded, size: 40, color: Colors.red),
-            const SizedBox(height: 12),
-            Text('등록된 신고 내역이 없습니다.', style: txt.bodyMedium),
-            const SizedBox(height: 4),
-            Text(
-              '불편사항이 있다면 상세 화면에서 신고를 남겨주세요.',
-              style:
-              txt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
+      body: ListView.separated(
+        padding: const EdgeInsets.all(16),
+        itemCount: _reports.length,
+        separatorBuilder: (_, __) => const SizedBox(height: 8),
+        itemBuilder: (context, index) {
+          final r = _reports[index];
+          final station = r.stationName.isNotEmpty ? r.stationName : '신고 대상 정보 없음';
+          final reporter = r.reporterName.isNotEmpty ? r.reporterName : '알 수 없음';
+          final reason = r.reasonLabel.isNotEmpty ? r.reasonLabel : r.reasonCode;
+          final tsText = _formatTs(r.timestampMs);
+
+          return Card(
+            child: ListTile(
+              title: Text(
+                station,
+                style: txt.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+              ),
+              subtitle: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('신고자: $reporter'),
+                  Text('사유: $reason'),
+                  if (r.description.isNotEmpty) Text('내용: ${r.description}'),
+                  Text(
+                    '신고 시각: $tsText',
+                    style: txt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
+                  ),
+                ],
+              ),
+              trailing: IconButton(
+                icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
+                onPressed: () => _deleteReport(index),
+              ),
             ),
-          ],
-        ),
+          );
+        },
       ),
     );
   }
 }
-
-

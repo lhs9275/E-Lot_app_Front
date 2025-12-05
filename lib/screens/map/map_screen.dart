@@ -8,6 +8,7 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_naver_map/flutter_naver_map.dart';
 import 'package:http/http.dart' as http;
 import 'cluster_options.dart';
+import 'cluster_options.dart';
 import 'map_controller.dart';
 import 'marker_builders.dart';
 import 'widgets/filter_bar.dart';
@@ -113,7 +114,7 @@ class MapScreen extends StatefulWidget {
 class _MapScreenState extends State<MapScreen> {
   // --- 상태 필드들 ---
   final MapController _mapController =
-      MapController(h2Api: h2StationApi, evApi: evStationApi, parkingApi: parkingLotApi);
+  MapController(h2Api: h2StationApi, evApi: evStationApi, parkingApi: parkingLotApi);
   NaverMapController? _controller;
   NOverlayImage? _clusterIcon;
 
@@ -153,29 +154,7 @@ class _MapScreenState extends State<MapScreen> {
   static const Color _parkingMarkerBaseColor = Color(0xFFF59E0B); // 주차장 주황
 
   /// 클러스터 옵션 (기본값)
-  NaverMapClusteringOptions get _clusterOptions => NaverMapClusteringOptions(
-        mergeStrategy: const NClusterMergeStrategy(),
-        clusterMarkerBuilder: (info, marker) {
-          final icon = _clusterIcon;
-          if (icon != null) {
-            marker.setIcon(icon);
-            marker.setIconSize(const NSize(44, 44));
-          } else {
-            // 아이콘 준비 전에도 보이도록 틴트만 적용
-            marker.setIconTintColor(_h2MarkerBaseColor);
-          }
-          marker.setIsFlat(true);
-          marker.setAnchor(NPoint.relativeCenter);
-          marker.setCaption(
-            NOverlayCaption(
-              text: info.size.toString(),
-              textSize: 13,
-              color: Colors.white,
-              haloColor: Colors.black.withOpacity(0.35),
-            ),
-          );
-        },
-      );
+  NaverMapClusteringOptions get _clusterOptions => defaultClusterOptions;
 
   String? get _stationError => _mapController.stationError;
   late final List<DynamicIslandAction> _quickActions = [
@@ -329,32 +308,19 @@ class _MapScreenState extends State<MapScreen> {
           ],
         ),
       ),
-      floatingActionButton: Transform.translate(
-        // y 양수 → 아래로 이동
-        offset: const Offset(0, 6), // 12 정도 내려보고, 더 내리고 싶으면 16, 20 이런 식으로
-        child: Padding(
-          padding: const EdgeInsets.only(bottom: 0, right: 4),
-          child: FloatingActionButton(
-            onPressed: _isManualRefreshing ? null : _refreshStations,
-            backgroundColor: Colors.white,
-            foregroundColor: const Color(0xFF4F46E5),
-            shape: const CircleBorder(),
-            elevation: 4,
-            child: _isManualRefreshing
-                ? const SizedBox(
-              width: 10,
-              height: 10,
-              child: CircularProgressIndicator(strokeWidth: 2.4),
-            )
-                : Image.asset(
-              'lib/assets/icons/app_icon/refresh.png',
-              width: 26,
-              height: 26,
-            ),
-          ),
+      floatingActionButton: Padding(
+        padding: const EdgeInsets.only(bottom: 24, right: 4),
+        child: FloatingActionButton(
+          onPressed: _isManualRefreshing ? null : _refreshStations,
+          child: _isManualRefreshing
+              ? const SizedBox(
+            width: 20,
+            height: 20,
+            child: CircularProgressIndicator(strokeWidth: 2.4),
+          )
+              : const Icon(Icons.refresh),
         ),
       ),
-
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
 
       /// ✅ 하단 네비게이션 바 (지도 탭이므로 index = 0)
@@ -378,13 +344,13 @@ class _MapScreenState extends State<MapScreen> {
       },
       searchResults: _searchResults
           .map((e) => SearchResultItem(
-                name: e.name,
-                subtitle: e.isH2 ? '[H2]' : '[EV]',
-                lat: e.lat,
-                lng: e.lng,
-                h2: e.h2,
-                ev: e.ev,
-              ))
+        name: e.name,
+        subtitle: e.isH2 ? '[H2]' : '[EV]',
+        lat: e.lat,
+        lng: e.lng,
+        h2: e.h2,
+        ev: e.ev,
+      ))
           .toList(),
       onResultTap: (item) {
         if (item.h2 != null) {
@@ -946,7 +912,6 @@ class _MapScreenState extends State<MapScreen> {
                             builder: (_) => ReviewPage(
                               stationId: station.stationId,
                               placeName: station.stationName,
-                              imageUrl: _defaultStationImageUrl,
                             ),
                           ),
                         );
@@ -1057,7 +1022,6 @@ class _MapScreenState extends State<MapScreen> {
                         builder: (_) => ReviewPage(
                           stationId: station.stationId,
                           placeName: station.stationName,
-                          imageUrl: _defaultStationImageUrl,
                         ),
                       ),
                     );
