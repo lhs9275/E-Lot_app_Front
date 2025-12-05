@@ -329,20 +329,32 @@ class _MapScreenState extends State<MapScreen> {
           ],
         ),
       ),
-      floatingActionButton: Padding(
-        padding: const EdgeInsets.only(bottom: 0, right: 4),
-        child: FloatingActionButton(
-          onPressed: _isManualRefreshing ? null : _refreshStations,
-          child: _isManualRefreshing
-              ? const SizedBox(
-                  width: 20,
-                  height: 20,
-
-                  child: CircularProgressIndicator(strokeWidth: 2.4),
-                )
-              : const Icon(Icons.refresh),
+      floatingActionButton: Transform.translate(
+        // y 양수 → 아래로 이동
+        offset: const Offset(0, 6), // 12 정도 내려보고, 더 내리고 싶으면 16, 20 이런 식으로
+        child: Padding(
+          padding: const EdgeInsets.only(bottom: 0, right: 4),
+          child: FloatingActionButton(
+            onPressed: _isManualRefreshing ? null : _refreshStations,
+            backgroundColor: Colors.white,
+            foregroundColor: const Color(0xFF4F46E5),
+            shape: const CircleBorder(),
+            elevation: 4,
+            child: _isManualRefreshing
+                ? const SizedBox(
+              width: 10,
+              height: 10,
+              child: CircularProgressIndicator(strokeWidth: 2.4),
+            )
+                : Image.asset(
+              'lib/assets/icons/app_icon/refresh.png',
+              width: 26,
+              height: 26,
+            ),
+          ),
         ),
       ),
+
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
 
       /// ✅ 하단 네비게이션 바 (지도 탭이므로 index = 0)
