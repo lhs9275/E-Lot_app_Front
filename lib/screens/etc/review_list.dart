@@ -286,8 +286,6 @@ extension on _ReviewListPageState {
         builder: (_) => ReviewPage(
           stationId: widget.stationId,
           placeName: widget.stationName,
-          imageUrl:
-              'https://images.unsplash.com/photo-1483721310020-03333e577078?q=80&w=800&auto=format&fit=crop',
         ),
       ),
     );
