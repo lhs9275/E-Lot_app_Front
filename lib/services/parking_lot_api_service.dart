@@ -30,18 +30,29 @@ class ParkingLotApiService {
       page: page,
       size: size,
     );
-    return _sendAndParse(uri);
+    final pageResult = await _sendAndParse(uri, requestedSize: size);
+    return pageResult.items;
   }
 
   Future<List<ParkingLot>> fetchAll({
     int page = 0,
     int size = 200,
   }) async {
-    final uri = _buildSearchUri(
-      page: page,
-      size: size,
-    );
-    return _sendAndParse(uri);
+    final results = <ParkingLot>[];
+    var currentPage = page;
+
+    while (true) {
+      final uri = _buildSearchUri(
+        page: currentPage,
+        size: size,
+      );
+      final pageResult = await _sendAndParse(uri, requestedSize: size);
+      results.addAll(pageResult.items);
+      if (pageResult.isLast || pageResult.items.isEmpty) break;
+      currentPage += 1;
+    }
+
+    return results;
   }
 
   Future<List<ParkingLot>> search({
@@ -56,10 +67,14 @@ class ParkingLotApiService {
       page: page,
       size: size,
     );
-    return _sendAndParse(uri);
+    final pageResult = await _sendAndParse(uri, requestedSize: size);
+    return pageResult.items;
   }
 
-  Future<List<ParkingLot>> _sendAndParse(Uri uri) async {
+  Future<_ParkingLotPageResult> _sendAndParse(
+    Uri uri, {
+    required int requestedSize,
+  }) async {
     http.Response response = await _getWithAuth(uri);
 
     if (response.statusCode == 401) {
@@ -74,9 +89,17 @@ class ParkingLotApiService {
     if (response.statusCode == 200) {
       final decoded = jsonDecode(response.body);
       final items = _extractList(decoded);
-      return items
+      final lots = items
           .map((e) => ParkingLot.fromJson(e as Map<String, dynamic>))
           .toList();
+      return _ParkingLotPageResult(
+        items: lots,
+        isLast: _isLastPage(
+          decoded,
+          itemCount: lots.length,
+          requestedSize: requestedSize,
+        ),
+      );
     }
 
     throw Exception(
@@ -100,6 +123,33 @@ class ParkingLotApiService {
       if (content is List) return content;
     }
     return const [];
+  }
+
+  bool _isLastPage(
+    dynamic decoded, {
+    required int itemCount,
+    required int requestedSize,
+  }) {
+    if (decoded is Map<String, dynamic>) {
+      final last = decoded['last'];
+      if (last is bool) return last;
+
+      final totalPages = decoded['totalPages'];
+      final pageNumber = decoded['number'];
+      if (totalPages is int && pageNumber is int) {
+        return pageNumber >= totalPages - 1;
+      }
+
+      final responsePageSize = decoded['size'];
+      if (responsePageSize is int && responsePageSize > 0) {
+        return itemCount < responsePageSize;
+      }
+
+      return itemCount < requestedSize;
+    }
+
+    // Map 형식이 아닌 순수 리스트 응답은 단일 페이지로 간주
+    return true;
   }
 
   Uri _buildNearbyUri({
@@ -141,4 +191,14 @@ class ParkingLotApiService {
       queryParameters: params,
     );
   }
+}
+
+class _ParkingLotPageResult {
+  _ParkingLotPageResult({
+    required this.items,
+    required this.isLast,
+  });
+
+  final List<ParkingLot> items;
+  final bool isLast;
 }
