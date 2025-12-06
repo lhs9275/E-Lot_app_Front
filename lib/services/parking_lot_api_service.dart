@@ -72,9 +72,9 @@ class ParkingLotApiService {
   }
 
   Future<_ParkingLotPageResult> _sendAndParse(
-    Uri uri, {
-    required int requestedSize,
-  }) async {
+      Uri uri, {
+        required int requestedSize,
+      }) async {
     http.Response response = await _getWithAuth(uri);
 
     if (response.statusCode == 401) {
@@ -126,10 +126,10 @@ class ParkingLotApiService {
   }
 
   bool _isLastPage(
-    dynamic decoded, {
-    required int itemCount,
-    required int requestedSize,
-  }) {
+      dynamic decoded, {
+        required int itemCount,
+        required int requestedSize,
+      }) {
     if (decoded is Map<String, dynamic>) {
       final last = decoded['last'];
       if (last is bool) return last;
@@ -160,7 +160,7 @@ class ParkingLotApiService {
     required int size,
   }) {
     final normalizedBase =
-        baseUrl.endsWith('/') ? baseUrl.substring(0, baseUrl.length - 1) : baseUrl;
+    baseUrl.endsWith('/') ? baseUrl.substring(0, baseUrl.length - 1) : baseUrl;
     return Uri.parse('$normalizedBase/mapi/parking-lots/nearby').replace(
       queryParameters: {
         'lat': lat.toString(),
@@ -179,7 +179,7 @@ class ParkingLotApiService {
     required int size,
   }) {
     final normalizedBase =
-        baseUrl.endsWith('/') ? baseUrl.substring(0, baseUrl.length - 1) : baseUrl;
+    baseUrl.endsWith('/') ? baseUrl.substring(0, baseUrl.length - 1) : baseUrl;
     final params = <String, String>{
       'page': page.toString(),
       'size': size.toString(),
