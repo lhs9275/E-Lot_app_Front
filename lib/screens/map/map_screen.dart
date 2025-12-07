@@ -203,6 +203,10 @@ class _MapScreenState extends State<MapScreen> {
     target: _initialTarget,
     zoom: 8.5,
   );
+  static const NLatLngBounds _koreaBounds = NLatLngBounds(
+    southWest: NLatLng(32.5, 123.5), // 제주 포함 남서쪽
+    northEast: NLatLng(39.5, 132.5), // 독도 포함 북동쪽
+  );
 
   /// ⭐ 백엔드 주소 (clos21)
   static const String _backendBaseUrl = 'https://clos21.kr';
@@ -345,6 +349,8 @@ class _MapScreenState extends State<MapScreen> {
             NaverMap(
               options: NaverMapViewOptions(
                 initialCameraPosition: _initialCamera,
+                extent: _koreaBounds,
+                minZoom: 4.8, // 제주까지 한 화면에 담길 정도로 축소 허용
                 locationButtonEnable: true,
                 contentPadding: EdgeInsets.only(bottom: mapBottomPadding),
               ),

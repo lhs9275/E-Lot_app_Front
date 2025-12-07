@@ -82,8 +82,10 @@ class MapController extends ChangeNotifier {
       final stations = await _h2Api.fetchStations();
       _h2Stations = stations;
       _isLoadingH2 = false;
+      debugPrint('📥 H2 stations fetched: ${_h2Stations.length}');
     } catch (e) {
       _isLoadingH2 = false;
+      debugPrint('❌ H2 fetch failed: $e');
       _stationError ??= '수소 충전소 데이터를 불러오지 못했습니다.';
     }
     notifyListeners();
@@ -94,8 +96,10 @@ class MapController extends ChangeNotifier {
       final stations = await _evApi.fetchStations();
       _evStations = stations;
       _isLoadingEv = false;
+      debugPrint('📥 EV stations fetched: ${_evStations.length}');
     } catch (e) {
       _isLoadingEv = false;
+      debugPrint('❌ EV fetch failed: $e');
       _stationError ??= '전기 충전소 데이터를 불러오지 못했습니다.';
     }
     notifyListeners();
@@ -106,8 +110,10 @@ class MapController extends ChangeNotifier {
       final lots = await _parkingApi.fetchAll(size: 1000);
       _parkingLots = lots;
       _isLoadingParking = false;
+      debugPrint('📥 Parking lots fetched: ${_parkingLots.length}');
     } catch (e) {
       _isLoadingParking = false;
+      debugPrint('❌ Parking fetch failed: $e');
       _stationError ??= '주차장 데이터를 불러오지 못했습니다.';
     }
     notifyListeners();
@@ -150,14 +156,17 @@ class MapController extends ChangeNotifier {
     if (h2Stations != null) {
       _h2Stations = h2Stations;
       _isLoadingH2 = false;
+      debugPrint('📍 Nearby H2: ${_h2Stations.length}');
     }
     if (evStations != null) {
       _evStations = evStations;
       _isLoadingEv = false;
+      debugPrint('📍 Nearby EV: ${_evStations.length}');
     }
     if (parkingLots != null) {
       _parkingLots = parkingLots;
       _isLoadingParking = false;
+      debugPrint('📍 Nearby Parking: ${_parkingLots.length}');
     }
     notifyListeners();
   }
