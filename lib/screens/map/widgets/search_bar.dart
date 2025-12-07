@@ -100,8 +100,12 @@ class SearchBarSection extends StatelessWidget {
   }
 
   Widget _buildDynamicIsland(BuildContext context) {
-    final bool shouldShow =
-        showDynamicIsland && actions.isNotEmpty && onActionTap != null;
+    final bool shouldShow = showDynamicIsland && actions.isNotEmpty;
+    final Map<String, List<DynamicIslandAction>> grouped = {};
+    for (final action in actions) {
+      final key = action.category ?? '추천';
+      grouped.putIfAbsent(key, () => []).add(action);
+    }
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 220),
       child: shouldShow
@@ -125,11 +129,10 @@ class SearchBarSection extends StatelessWidget {
                 children: [
                   Row(
                     children: const [
-                      Icon(Icons.explore_outlined,
-                          size: 18, color: Colors.white),
+                      Icon(Icons.trending_up, size: 18, color: Colors.white),
                       SizedBox(width: 6),
                       Text(
-                        '빠른 필터',
+                        '내 주변의 시설',
                         style: TextStyle(
                           color: Colors.white,
                           fontWeight: FontWeight.w700,
@@ -138,31 +141,33 @@ class SearchBarSection extends StatelessWidget {
                     ],
                   ),
                   const SizedBox(height: 10),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: actions
-                        .map(
-                          (action) => ActionChip(
-                            backgroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 8, vertical: 6),
-                            avatar: Icon(
-                              action.icon,
-                              size: 16,
-                              color: action.color ?? Colors.black87,
+                  ...grouped.entries.map(
+                    (group) => Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            group.key,
+                            style: const TextStyle(
+                              color: Colors.white70,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
                             ),
-                            label: Text(
-                              action.label,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w600,
-                                color: Colors.black87,
-                              ),
-                            ),
-                            onPressed: () => onActionTap?.call(action),
                           ),
-                        )
-                        .toList(),
+                          const SizedBox(height: 6),
+                          ...group.value.asMap().entries.map(
+                                (entry) => _DynamicIslandSuggestion(
+                                  rank: entry.key + 1,
+                                  action: entry.value,
+                                  onTap: onActionTap != null
+                                      ? () => onActionTap?.call(entry.value)
+                                      : null,
+                                ),
+                              ),
+                        ],
+                      ),
+                    ),
                   ),
                 ],
               ),
@@ -236,10 +241,100 @@ class DynamicIslandAction {
     required this.label,
     required this.icon,
     this.color,
+    this.subtitle,
+    this.category,
+    this.lat,
+    this.lng,
+    this.payload,
+    this.type,
   });
 
   final String id;
   final String label;
   final IconData icon;
   final Color? color;
+  final String? subtitle;
+  final String? category;
+  final double? lat;
+  final double? lng;
+  final Object? payload;
+  final String? type;
+}
+
+class _DynamicIslandSuggestion extends StatelessWidget {
+  const _DynamicIslandSuggestion({
+    required this.rank,
+    required this.action,
+    this.onTap,
+  });
+
+  final int rank;
+  final DynamicIslandAction action;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final Color iconColor = action.color ?? Colors.white;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        splashColor: Colors.white24,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 6),
+          child: Row(
+            children: [
+              Container(
+                width: 26,
+                height: 26,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.08),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  '$rank',
+                  style: const TextStyle(
+                    color: Colors.white70,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 12,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Icon(action.icon, size: 18, color: iconColor),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      action.label,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    if (action.subtitle != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 2),
+                        child: Text(
+                          action.subtitle!,
+                          style: const TextStyle(
+                            color: Colors.white70,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }

@@ -6,8 +6,8 @@ import 'dart:io' show Platform;
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_naver_map/flutter_naver_map.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
-import 'cluster_options.dart';
 import 'cluster_options.dart';
 import 'map_controller.dart';
 import 'marker_builders.dart';
@@ -157,32 +157,8 @@ class _MapScreenState extends State<MapScreen> {
   NaverMapClusteringOptions get _clusterOptions => defaultClusterOptions;
 
   String? get _stationError => _mapController.stationError;
-  late final List<DynamicIslandAction> _quickActions = [
-    DynamicIslandAction(
-      id: 'refresh',
-      label: '데이터 새로고침',
-      icon: Icons.refresh_rounded,
-      color: Colors.white,
-    ),
-    DynamicIslandAction(
-      id: 'h2_only',
-      label: 'H2만 보기',
-      icon: Icons.local_gas_station,
-      color: _h2MarkerBaseColor,
-    ),
-    DynamicIslandAction(
-      id: 'ev_only',
-      label: 'EV만 보기',
-      icon: Icons.ev_station,
-      color: _evMarkerBaseColor,
-    ),
-    DynamicIslandAction(
-      id: 'all',
-      label: '전체 보기',
-      icon: Icons.layers_outlined,
-      color: _parkingMarkerBaseColor,
-    ),
-  ];
+  List<DynamicIslandAction> _dynamicIslandActions = [];
+  bool _isBuildingSuggestions = false;
 
   Iterable<H2Station> get _h2StationsWithCoordinates =>
       _mapController.h2StationsWithCoords;
@@ -204,6 +180,9 @@ class _MapScreenState extends State<MapScreen> {
       setState(() {
         _isSearchFocused = _searchFocusNode.hasFocus;
       });
+      if (_searchFocusNode.hasFocus) {
+        unawaited(_refreshDynamicIslandSuggestions());
+      }
     });
     WidgetsBinding.instance.addPostFrameCallback((_) => _prepareClusterIcon());
   }
@@ -242,6 +221,9 @@ class _MapScreenState extends State<MapScreen> {
     // 데이터/필터 변경 시 UI와 마커를 갱신한다.
     if (_isMapLoaded && _controller != null) {
       unawaited(_renderStationMarkers());
+    }
+    if (_isSearchFocused) {
+      unawaited(_refreshDynamicIslandSuggestions());
     }
     if (mounted) setState(() {});
   }
@@ -363,7 +345,7 @@ class _MapScreenState extends State<MapScreen> {
       searchError: _searchError,
       isSearching: _isSearching,
       showDynamicIsland: _isSearchFocused,
-      actions: _quickActions,
+      actions: _dynamicIslandActions,
       onActionTap: _handleQuickAction,
     );
   }
@@ -509,33 +491,213 @@ class _MapScreenState extends State<MapScreen> {
 
   void _handleQuickAction(DynamicIslandAction action) {
     if (!mounted) return;
-    switch (action.id) {
-      case 'refresh':
-        unawaited(_refreshStations());
+    FocusScope.of(context).unfocus();
+    unawaited(_handleQuickActionAsync(action));
+  }
+
+  Future<void> _handleQuickActionAsync(DynamicIslandAction action) async {
+    switch (action.type) {
+      case 'parking':
+        _ensureFilterForType(parking: true);
+        await _focusAndOpen(action, onParking: _showParkingLotBottomSheet);
         break;
-      case 'h2_only':
-        _setFilters(h2: true, ev: false, parking: false);
+      case 'ev':
+        _ensureFilterForType(ev: true);
+        await _focusAndOpen(action, onEv: _showEvStationBottomSheet);
         break;
-      case 'ev_only':
-        _setFilters(h2: false, ev: true, parking: false);
-        break;
-      case 'all':
-        _setFilters(h2: true, ev: true, parking: true);
+      case 'h2':
+        _ensureFilterForType(h2: true);
+        await _focusAndOpen(action, onH2: _showH2StationBottomSheet);
         break;
       default:
         break;
     }
-    FocusScope.of(context).unfocus();
   }
 
-  void _setFilters({
-    required bool h2,
-    required bool ev,
-    required bool parking,
+  Future<void> _focusAndOpen(
+    DynamicIslandAction action, {
+    void Function(ParkingLot lot)? onParking,
+    void Function(EVStation station)? onEv,
+    void Function(H2Station station)? onH2,
+  }) async {
+    final lat = action.lat;
+    final lng = action.lng;
+    if (lat != null && lng != null) {
+      await _focusTo(lat, lng);
+    }
+
+    final payload = action.payload;
+    if (payload is ParkingLot && onParking != null) {
+      onParking(payload);
+    } else if (payload is EVStation && onEv != null) {
+      onEv(payload);
+    } else if (payload is H2Station && onH2 != null) {
+      onH2(payload);
+    }
+  }
+
+  void _ensureFilterForType({
+    bool h2 = false,
+    bool ev = false,
+    bool parking = false,
   }) {
-    if (_mapController.showH2 != h2) _mapController.toggleH2();
-    if (_mapController.showEv != ev) _mapController.toggleEv();
-    if (_mapController.showParking != parking) _mapController.toggleParking();
+    if (h2 && !_mapController.showH2) _mapController.toggleH2();
+    if (ev && !_mapController.showEv) _mapController.toggleEv();
+    if (parking && !_mapController.showParking) _mapController.toggleParking();
+  }
+
+  Future<void> _refreshDynamicIslandSuggestions() async {
+    if (_isBuildingSuggestions || !_isSearchFocused) return;
+    _isBuildingSuggestions = true;
+    setState(() {});
+
+    final position = await _getCurrentPosition();
+    if (!mounted) return;
+
+    if (position == null) {
+      setState(() {
+        _dynamicIslandActions = [];
+        _isBuildingSuggestions = false;
+      });
+      return;
+    }
+
+    final actions = <DynamicIslandAction>[
+      ..._buildNearestParking(position),
+      ..._buildNearestEv(position),
+      ..._buildNearestH2(position),
+    ];
+
+    setState(() {
+      _dynamicIslandActions = actions;
+      _isBuildingSuggestions = false;
+    });
+  }
+
+  List<DynamicIslandAction> _buildNearestParking(
+    Position position, {
+    int take = 3,
+  }) {
+    final lots = _parkingLotsWithCoordinates.toList();
+    lots.sort((a, b) {
+      final da = _distance(position, a.latitude!, a.longitude!);
+      final db = _distance(position, b.latitude!, b.longitude!);
+      return da.compareTo(db);
+    });
+
+    return lots.take(take).map((lot) {
+      final meters = _distance(position, lot.latitude!, lot.longitude!);
+      return DynamicIslandAction(
+        id: 'parking:${lot.id}',
+        label: lot.name,
+        subtitle: _formatDistance(meters),
+        icon: Icons.local_parking,
+        color: _parkingMarkerBaseColor,
+        category: '근처 주차장',
+        lat: lot.latitude,
+        lng: lot.longitude,
+        payload: lot,
+        type: 'parking',
+      );
+    }).toList();
+  }
+
+  List<DynamicIslandAction> _buildNearestEv(
+    Position position, {
+    int take = 3,
+  }) {
+    final stations = _evStationsWithCoordinates.toList();
+    stations.sort((a, b) {
+      final da = _distance(position, a.latitude!, a.longitude!);
+      final db = _distance(position, b.latitude!, b.longitude!);
+      return da.compareTo(db);
+    });
+
+    return stations.take(take).map((station) {
+      final meters = _distance(position, station.latitude!, station.longitude!);
+      return DynamicIslandAction(
+        id: 'ev:${station.stationId}',
+        label: station.stationName,
+        subtitle: _formatDistance(meters),
+        icon: Icons.ev_station,
+        color: _evMarkerBaseColor,
+        category: '근처 전기 충전소',
+        lat: station.latitude,
+        lng: station.longitude,
+        payload: station,
+        type: 'ev',
+      );
+    }).toList();
+  }
+
+  List<DynamicIslandAction> _buildNearestH2(
+    Position position, {
+    int take = 3,
+  }) {
+    final stations = _h2StationsWithCoordinates.toList();
+    stations.sort((a, b) {
+      final da = _distance(position, a.latitude!, a.longitude!);
+      final db = _distance(position, b.latitude!, b.longitude!);
+      return da.compareTo(db);
+    });
+
+    return stations.take(take).map((station) {
+      final meters = _distance(position, station.latitude!, station.longitude!);
+      return DynamicIslandAction(
+        id: 'h2:${station.stationId}',
+        label: station.stationName,
+        subtitle: _formatDistance(meters),
+        icon: Icons.local_gas_station,
+        color: _h2MarkerBaseColor,
+        category: '근처 수소 충전소',
+        lat: station.latitude,
+        lng: station.longitude,
+        payload: station,
+        type: 'h2',
+      );
+    }).toList();
+  }
+
+  double _distance(Position origin, double lat, double lng) {
+    return Geolocator.distanceBetween(
+      origin.latitude,
+      origin.longitude,
+      lat,
+      lng,
+    );
+  }
+
+  String _formatDistance(double meters) {
+    if (meters >= 1000) {
+      return '${(meters / 1000).toStringAsFixed(1)}km';
+    }
+    return '${meters.round()}m';
+  }
+
+  Future<Position?> _getCurrentPosition() async {
+    try {
+      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        _showSnack('위치 서비스를 켜주세요.');
+        return null;
+      }
+
+      var permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) {
+        _showSnack('위치 권한을 허용해주세요.');
+        return null;
+      }
+
+      final position = await Geolocator.getCurrentPosition();
+      return position;
+    } catch (_) {
+      _showSnack('현재 위치를 불러올 수 없습니다.');
+      return null;
+    }
   }
 
   Future<void> _focusTo(double lat, double lng) async {
@@ -546,6 +708,13 @@ class _MapScreenState extends State<MapScreen> {
         NCameraPosition(target: NLatLng(lat, lng), zoom: 14),
       ),
     );
+  }
+
+  void _showSnack(String message) {
+    if (!mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.hideCurrentSnackBar();
+    messenger.showSnackBar(SnackBar(content: Text(message)));
   }
 
   /// 상단 중앙 로딩 토스트.
