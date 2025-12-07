@@ -1,4 +1,4 @@
-﻿// lib/screens/map/map_screen.dart
+// lib/screens/map/map_screen.dart
 import 'dart:async';
 import 'dart:convert'; // ⭐ 즐겨찾기 동기화용 JSON 파싱
 import 'dart:io' show Platform;
@@ -20,6 +20,7 @@ import '../../models/h2_station.dart';
 import '../../models/parking_lot.dart';
 import '../../services/ev_station_api_service.dart';
 import '../../services/h2_station_api_service.dart';
+import '../etc/review_list.dart';
 import '../../services/parking_lot_api_service.dart';
 import '../bottom_navbar.dart'; // ✅ 공통 하단 네비게이션 바
 import '../etc/review.dart'; // ⭐ 리뷰 작성 페이지
@@ -113,8 +114,11 @@ class MapScreen extends StatefulWidget {
 /// 지도 상호작용, 충전소 호출 및 즐겨찾기를 모두 관리하는 상태 객체.
 class _MapScreenState extends State<MapScreen> {
   // --- 상태 필드들 ---
-  final MapController _mapController =
-  MapController(h2Api: h2StationApi, evApi: evStationApi, parkingApi: parkingLotApi);
+  final MapController _mapController = MapController(
+    h2Api: h2StationApi,
+    evApi: evStationApi,
+    parkingApi: parkingLotApi,
+  );
   NaverMapController? _controller;
   NOverlayImage? _clusterIcon;
 
@@ -133,8 +137,10 @@ class _MapScreenState extends State<MapScreen> {
 
   // 시작 위치 (예: 서울시청)
   final NLatLng _initialTarget = const NLatLng(37.5666, 126.9790);
-  late final NCameraPosition _initialCamera =
-  NCameraPosition(target: _initialTarget, zoom: 8.5);
+  late final NCameraPosition _initialCamera = NCameraPosition(
+    target: _initialTarget,
+    zoom: 8.5,
+  );
 
   /// ⭐ 백엔드 주소 (clos21)
   static const String _backendBaseUrl = 'https://clos21.kr';
@@ -145,8 +151,6 @@ class _MapScreenState extends State<MapScreen> {
 
   /// ⭐ 즐겨찾기 상태 (stationId 기준)
   final Set<String> _favoriteStationIds = {};
-
-  /// ⭐ H2만 15초마다 자동 새로고침용 타이머
 
   /// 💡 지도 마커 색상 (유형 구분)
   static const Color _h2MarkerBaseColor = Color(0xFF2563EB); // 파란색 톤
@@ -251,9 +255,7 @@ class _MapScreenState extends State<MapScreen> {
               options: NaverMapViewOptions(
                 initialCameraPosition: _initialCamera,
                 locationButtonEnable: true,
-                contentPadding: EdgeInsets.only(
-                  bottom: mapBottomPadding,
-                ),
+                contentPadding: EdgeInsets.only(bottom: mapBottomPadding),
               ),
 
               /// ⭐ 클러스터 옵션 (플러그인 기본값 사용 — iOS/Android 동일 동작)
@@ -296,19 +298,17 @@ class _MapScreenState extends State<MapScreen> {
           onPressed: _isManualRefreshing ? null : _refreshStations,
           child: _isManualRefreshing
               ? const SizedBox(
-            width: 20,
-            height: 20,
-            child: CircularProgressIndicator(strokeWidth: 2.4),
-          )
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2.4),
+                )
               : const Icon(Icons.refresh),
         ),
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
 
       /// ✅ 하단 네비게이션 바 (지도 탭이므로 index = 0)
-      bottomNavigationBar: const MainBottomNavBar(
-        currentIndex: 0,
-      ),
+      bottomNavigationBar: const MainBottomNavBar(currentIndex: 0),
     );
   }
 
@@ -325,14 +325,16 @@ class _MapScreenState extends State<MapScreen> {
         });
       },
       searchResults: _searchResults
-          .map((e) => SearchResultItem(
-        name: e.name,
-        subtitle: e.isH2 ? '[H2]' : '[EV]',
-        lat: e.lat,
-        lng: e.lng,
-        h2: e.h2,
-        ev: e.ev,
-      ))
+          .map(
+            (e) => SearchResultItem(
+              name: e.name,
+              subtitle: e.isH2 ? '[H2]' : '[EV]',
+              lat: e.lat,
+              lng: e.lng,
+              h2: e.h2,
+              ev: e.ev,
+            ),
+          )
           .toList(),
       onResultTap: (item) {
         if (item.h2 != null) {
@@ -349,7 +351,6 @@ class _MapScreenState extends State<MapScreen> {
       onActionTap: _handleQuickAction,
     );
   }
-
 
   /// 🔍 타이핑할 때마다 유사 이름 후보 찾아서 리스트에 넣기
   void _onSearchChanged(String raw) {
@@ -433,9 +434,9 @@ class _MapScreenState extends State<MapScreen> {
   void _onSearchSubmitted(String rawQuery) {
     final query = rawQuery.trim();
     if (query.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('충전소 이름을 입력해주세요.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('충전소 이름을 입력해주세요.')));
       return;
     }
 
@@ -484,9 +485,9 @@ class _MapScreenState extends State<MapScreen> {
     }
 
     // 3) 둘 다 없으면 안내
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('"$query" 이름의 충전소를 찾을 수 없습니다.')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text('"$query" 이름의 충전소를 찾을 수 없습니다.')));
   }
 
   void _handleQuickAction(DynamicIslandAction action) {
@@ -602,10 +603,7 @@ class _MapScreenState extends State<MapScreen> {
     }).toList();
   }
 
-  List<DynamicIslandAction> _buildNearestEv(
-    Position position, {
-    int take = 3,
-  }) {
+  List<DynamicIslandAction> _buildNearestEv(Position position, {int take = 3}) {
     final stations = _evStationsWithCoordinates.toList();
     stations.sort((a, b) {
       final da = _distance(position, a.latitude!, a.longitude!);
@@ -630,10 +628,7 @@ class _MapScreenState extends State<MapScreen> {
     }).toList();
   }
 
-  List<DynamicIslandAction> _buildNearestH2(
-    Position position, {
-    int take = 3,
-  }) {
+  List<DynamicIslandAction> _buildNearestH2(Position position, {int take = 3}) {
     final stations = _h2StationsWithCoordinates.toList();
     stations.sort((a, b) {
       final da = _distance(position, a.latitude!, a.longitude!);
@@ -815,15 +810,9 @@ class _MapScreenState extends State<MapScreen> {
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
         children: [
-          Text(
-            '$label: ',
-            style: const TextStyle(fontWeight: FontWeight.w600),
-          ),
+          Text('$label: ', style: const TextStyle(fontWeight: FontWeight.w600)),
           Expanded(
-            child: Text(
-              value,
-              style: const TextStyle(color: Colors.black87),
-            ),
+            child: Text(value, style: const TextStyle(color: Colors.black87)),
           ),
         ],
       ),
@@ -889,9 +878,9 @@ class _MapScreenState extends State<MapScreen> {
 
     debugPrint(
       '🎯 Render markers (filtered): '
-          'H2=${_mapController.showH2 ? _mapController.h2StationsWithCoords.length : 0}, '
-          'EV=${_mapController.showEv ? _mapController.evStationsWithCoords.length : 0}, '
-          'P=${_mapController.showParking ? _mapController.parkingLotsWithCoords.length : 0}',
+      'H2=${_mapController.showH2 ? _mapController.h2StationsWithCoords.length : 0}, '
+      'EV=${_mapController.showEv ? _mapController.evStationsWithCoords.length : 0}, '
+      'P=${_mapController.showParking ? _mapController.parkingLotsWithCoords.length : 0}',
     );
 
     if (overlays.isEmpty) return;
@@ -1028,12 +1017,8 @@ class _MapScreenState extends State<MapScreen> {
                       Expanded(
                         child: Text(
                           station.stationName,
-                          style: Theme.of(context)
-                              .textTheme
-                              .titleMedium
-                              ?.copyWith(
-                            fontWeight: FontWeight.bold,
-                          ),
+                          style: Theme.of(context).textTheme.titleMedium
+                              ?.copyWith(fontWeight: FontWeight.bold),
                         ),
                       ),
                       IconButton(
@@ -1050,10 +1035,7 @@ class _MapScreenState extends State<MapScreen> {
                   ),
                   const SizedBox(height: 8),
                   _buildStationField('운영 상태', station.statusName),
-                  _buildStationField(
-                    '대기 차량',
-                    '${station.waitingCount ?? 0}대',
-                  ),
+                  _buildStationField('대기 차량', '${station.waitingCount ?? 0}대'),
                   _buildStationField(
                     '최대 충전 가능',
                     station.maxChargeCount != null
@@ -1066,26 +1048,45 @@ class _MapScreenState extends State<MapScreen> {
                   ),
                   const SizedBox(height: 16),
 
-                  /// ⭐ 리뷰 작성 버튼
-                  SizedBox(
-                    width: double.infinity,
-                    child: FilledButton.icon(
-                      icon: const Icon(Icons.rate_review),
-                      label: const Text('리뷰 작성하기'),
-                      onPressed: () {
-                        // 바텀시트 닫고
-                        Navigator.of(context).pop();
-                        // 리뷰 페이지로 이동
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => ReviewPage(
-                              stationId: station.stationId,
-                              placeName: station.stationName,
-                            ),
-                          ),
-                        );
-                      },
-                    ),
+                  /// 리뷰 버튼 (작성 / 목록)
+                  Row(
+                    children: [
+                      Expanded(
+                        child: FilledButton.icon(
+                          icon: const Icon(Icons.rate_review),
+                          label: const Text('리뷰 작성하기'),
+                          onPressed: () {
+                            Navigator.of(context).pop();
+                            Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) => ReviewPage(
+                                  stationId: station.stationId,
+                                  placeName: station.stationName,
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          icon: const Icon(Icons.list_alt_rounded),
+                          label: const Text('리뷰 목록'),
+                          onPressed: () {
+                            Navigator.of(context).pop();
+                            Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) => ReviewListPage(
+                                  stationId: station.stationId,
+                                  stationName: station.stationName,
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
@@ -1112,23 +1113,68 @@ class _MapScreenState extends State<MapScreen> {
             children: [
               Text(
                 lot.name,
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.bold,
-                ),
+                style: Theme.of(
+                  context,
+                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 8),
               _buildStationField('주소', lot.address ?? '주소 정보 없음'),
               _buildStationField('주차 가능', _formatParkingSpaces(lot)),
               _buildStationField(
                 '요금',
-                lot.feeInfo?.isNotEmpty == true
-                    ? lot.feeInfo!
-                    : '요금 정보 없음',
+                lot.feeInfo?.isNotEmpty == true ? lot.feeInfo! : '요금 정보 없음',
               ),
               _buildStationField(
                 '문의',
                 lot.tel?.isNotEmpty == true ? lot.tel! : '연락처 정보 없음',
               ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Expanded(
+                    child: FilledButton.icon(
+                      style: FilledButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 10),
+                      ),
+                      icon: const Icon(Icons.rate_review, size: 18),
+                      label: const Text('리뷰 작성하기'),
+                      onPressed: () {
+                        Navigator.of(context).pop();
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => ReviewPage(
+                              stationId: lot.id,
+                              placeName: lot.name,
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 10),
+                      ),
+                      icon: const Icon(Icons.list_alt_rounded, size: 18),
+                      label: const Text('리뷰 목록'),
+                      onPressed: () {
+                        Navigator.of(context).pop();
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => ReviewListPage(
+                              stationId: lot.id,
+                              stationName: lot.name,
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
             ],
           ),
         );
@@ -1152,51 +1198,76 @@ class _MapScreenState extends State<MapScreen> {
             children: [
               Text(
                 station.stationName,
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.bold,
-                ),
+                style: Theme.of(
+                  context,
+                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 8),
               _buildStationField(
-                  '상태', '${station.statusLabel} (${station.status})'),
+                '상태',
+                '${station.statusLabel} (${station.status})',
+              ),
               _buildStationField(
-                  '출력',
-                  station.outputKw != null
-                      ? '${station.outputKw} kW'
-                      : '정보 없음'),
-              _buildStationField(
-                  '최근 갱신', station.statusUpdatedAt ?? '정보 없음'),
+                '출력',
+                station.outputKw != null ? '${station.outputKw} kW' : '정보 없음',
+              ),
+              _buildStationField('최근 갱신', station.statusUpdatedAt ?? '정보 없음'),
               _buildStationField(
                 '주소',
                 '${station.address ?? ''} ${station.addressDetail ?? ''}'
                     .trim(),
               ),
               _buildStationField(
-                  '무료주차', station.parkingFree == true ? '예' : '아니요'),
+                '무료주차',
+                station.parkingFree == true ? '예' : '아니요',
+              ),
               _buildStationField(
-                  '층/구역',
-                  '${station.floor ?? '-'} / ${station.floorType ?? '-'}'),
+                '층/구역',
+                '${station.floor ?? '-'} / ${station.floorType ?? '-'}',
+              ),
               const SizedBox(height: 16),
 
-              /// ⭐ 리뷰 작성 버튼 (EV도 동일하게 사용)
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton.icon(
-                  icon: const Icon(Icons.rate_review),
-                  label: const Text('리뷰 작성하기'),
-                  onPressed: () {
-                    Navigator.of(context).pop();
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => ReviewPage(
-                          stationId: station.stationId,
-                          placeName: station.stationName,
-                        ),
-                      ),
-                    );
-                  },
-                ),
+              /// 리뷰 버튼 (작성 / 목록)
+              Row(
+                children: [
+                  Expanded(
+                    child: FilledButton.icon(
+                      icon: const Icon(Icons.rate_review),
+                      label: const Text('리뷰 작성하기'),
+                      onPressed: () {
+                        Navigator.of(context).pop();
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => ReviewPage(
+                              stationId: station.stationId,
+                              placeName: station.stationName,
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      icon: const Icon(Icons.list_alt_rounded),
+                      label: const Text('리뷰 목록'),
+                      onPressed: () {
+                        Navigator.of(context).pop();
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => ReviewListPage(
+                              stationId: station.stationId,
+                              stationName: station.stationName,
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ],
               ),
+              const SizedBox(height: 8),
             ],
           ),
         );
