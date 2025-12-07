@@ -12,6 +12,7 @@
 .pub/
 build/
 coverage/
+.flutter-plugins-dependencies
 
 # Generated (자동 생성 파일)
 **/GeneratedPluginRegistrant.*
