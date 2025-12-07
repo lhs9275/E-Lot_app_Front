@@ -1,4 +1,4 @@
-// lib/screens/map/map_screen.dart
+﻿// lib/screens/map/map_screen.dart
 import 'dart:async';
 import 'dart:convert'; // ⭐ 즐겨찾기 동기화용 JSON 파싱
 import 'dart:io' show Platform;
@@ -13,7 +13,6 @@ import 'map_controller.dart';
 import 'marker_builders.dart';
 import 'widgets/filter_bar.dart';
 import 'widgets/search_bar.dart';
-import 'widgets/status_banners.dart';
 
 import '../../models/ev_station.dart';
 import '../../models/h2_station.dart';
@@ -43,6 +42,46 @@ class _SearchCandidate {
     required this.lat,
     required this.lng,
   });
+}
+
+class _NearbyFilterResult {
+  const _NearbyFilterResult({
+    required this.enabled,
+    required this.radiusKm,
+    required this.includeEv,
+    required this.includeH2,
+    required this.includeParking,
+    this.evType,
+    this.evChargerType,
+    this.evStatus,
+    this.h2Type,
+    this.h2StationTypes = const {},
+    this.h2Specs = const {},
+    this.priceMin,
+    this.priceMax,
+    this.availableMin,
+    this.parkingCategory,
+    this.parkingType,
+    this.parkingFeeType,
+  });
+
+  final bool enabled;
+  final double radiusKm;
+  final bool includeEv;
+  final bool includeH2;
+  final bool includeParking;
+  final String? evType;
+  final String? evChargerType;
+  final String? evStatus;
+  final String? h2Type;
+  final Set<String> h2StationTypes;
+  final Set<String> h2Specs;
+  final int? priceMin;
+  final int? priceMax;
+  final int? availableMin;
+  final String? parkingCategory;
+  final String? parkingType;
+  final String? parkingFeeType;
 }
 
 /// ✅ 이 파일 단독 실행용 엔트리 포인트
@@ -135,6 +174,29 @@ class _MapScreenState extends State<MapScreen> {
   bool _isManualRefreshing = false;
   bool _isMapLoaded = false;
 
+  // 상세 필터 상태
+  bool _useNearbyFilter = false;
+  bool _includeEvFilter = false;
+  bool _includeH2Filter = false;
+  bool _includeParkingFilter = false;
+  double _radiusKmFilter = 5;
+
+  String? _evTypeFilter;
+  String? _evChargerTypeFilter;
+  String? _evStatusFilter;
+
+  String? _h2TypeFilter;
+  final Set<String> _h2SpecFilter = {};
+  final Set<String> _h2StationTypeFilter = {};
+  int? _h2PriceMin;
+  int? _h2PriceMax;
+  int _h2AvailableMin = 0;
+  bool _useAvailabilityFilter = false;
+
+  String? _parkingCategoryFilter;
+  String? _parkingTypeFilter;
+  String? _parkingFeeTypeFilter;
+
   // 시작 위치 (예: 서울시청)
   final NLatLng _initialTarget = const NLatLng(37.5666, 126.9790);
   late final NCameraPosition _initialCamera = NCameraPosition(
@@ -156,6 +218,13 @@ class _MapScreenState extends State<MapScreen> {
   static const Color _h2MarkerBaseColor = Color(0xFF2563EB); // 파란색 톤
   static const Color _evMarkerBaseColor = Color(0xFF10B981); // 초록색 톤
   static const Color _parkingMarkerBaseColor = Color(0xFFF59E0B); // 주차장 주황
+  static const List<String> _evApiTypes = ['ALL', 'CURRENT', 'OPERATION'];
+  static const List<String> _h2ApiTypes = ['ALL', 'CURRENT', 'OPERATION'];
+  static const List<String> _defaultH2Specs = ['700', '350'];
+  static const List<String> _defaultH2StationTypes = ['승용차', '버스', '복합'];
+  static const List<String> _parkingCategoryOptions = ['공영', '민영'];
+  static const List<String> _parkingTypeOptions = ['노상', '노외'];
+  static const List<String> _parkingFeeTypeOptions = ['무료', '유료'];
 
   /// 클러스터 옵션 (기본값)
   NaverMapClusteringOptions get _clusterOptions => defaultClusterOptions;
@@ -172,6 +241,28 @@ class _MapScreenState extends State<MapScreen> {
       _mapController.parkingLotsWithCoords;
 
   int get _totalMappableMarkerCount => _mapController.totalMappableCount;
+
+  List<String> get _evStatusOptions {
+    final statuses = _mapController.evStations
+        .map((e) => e.status)
+        .whereType<String>()
+        .where((s) => s.trim().isNotEmpty)
+        .toSet()
+        .toList();
+    statuses.sort();
+    return statuses;
+  }
+
+  List<String> get _evChargerTypeOptions {
+    final chargers = _mapController.evStations
+        .map((e) => e.chargerType)
+        .whereType<String>()
+        .where((s) => s.trim().isNotEmpty)
+        .toSet()
+        .toList();
+    chargers.sort();
+    return chargers;
+  }
 
   // --- 라이프사이클 ---
   @override
@@ -286,6 +377,8 @@ class _MapScreenState extends State<MapScreen> {
                     onToggleEv: _mapController.toggleEv,
                     onToggleParking: _mapController.toggleParking,
                   ),
+                  const SizedBox(height: 8),
+                  _buildNearbyFilterButton(),
                 ],
               ),
             ),
@@ -298,10 +391,10 @@ class _MapScreenState extends State<MapScreen> {
           onPressed: _isManualRefreshing ? null : _refreshStations,
           child: _isManualRefreshing
               ? const SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(strokeWidth: 2.4),
-                )
+            width: 20,
+            height: 20,
+            child: CircularProgressIndicator(strokeWidth: 2.4),
+          )
               : const Icon(Icons.refresh),
         ),
       ),
@@ -327,14 +420,14 @@ class _MapScreenState extends State<MapScreen> {
       searchResults: _searchResults
           .map(
             (e) => SearchResultItem(
-              name: e.name,
-              subtitle: e.isH2 ? '[H2]' : '[EV]',
-              lat: e.lat,
-              lng: e.lng,
-              h2: e.h2,
-              ev: e.ev,
-            ),
-          )
+          name: e.name,
+          subtitle: e.isH2 ? '[H2]' : '[EV]',
+          lat: e.lat,
+          lng: e.lng,
+          h2: e.h2,
+          ev: e.ev,
+        ),
+      )
           .toList(),
       onResultTap: (item) {
         if (item.h2 != null) {
@@ -349,6 +442,638 @@ class _MapScreenState extends State<MapScreen> {
       showDynamicIsland: _isSearchFocused,
       actions: _dynamicIslandActions,
       onActionTap: _handleQuickAction,
+    );
+  }
+
+  Future<void> _openNearbyFilterSheet() async {
+    final evStatusOptions = _evStatusOptions;
+    final evChargerOptions = _evChargerTypeOptions;
+
+    final result = await showModalBottomSheet<_NearbyFilterResult>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (context) {
+        bool enabled = _useNearbyFilter;
+        bool includeEv = _includeEvFilter;
+        bool includeH2 = _includeH2Filter;
+        bool includeParking = _includeParkingFilter;
+        double radiusKm = _radiusKmFilter;
+        String? evType = _evTypeFilter;
+        String? evStatus = _evStatusFilter;
+        String? evCharger = _evChargerTypeFilter;
+        String? h2Type = _h2TypeFilter;
+        Set<String> h2Specs = {..._h2SpecFilter};
+        Set<String> h2StationTypes = {..._h2StationTypeFilter};
+        bool usePrice = _h2PriceMin != null || _h2PriceMax != null;
+        RangeValues priceRange = RangeValues(
+          (_h2PriceMin ?? 0).toDouble(),
+          (_h2PriceMax ?? 15000).toDouble(),
+        );
+        bool useAvailability = _useAvailabilityFilter;
+        int availableMin = _h2AvailableMin;
+        String? parkingCategory = _parkingCategoryFilter;
+        String? parkingType = _parkingTypeFilter;
+        String? parkingFeeType = _parkingFeeTypeFilter;
+
+        void reset() {
+          enabled = false;
+          includeEv = false;
+          includeH2 = false;
+          includeParking = false;
+          radiusKm = 5;
+          evType = null;
+          evStatus = null;
+          evCharger = null;
+          h2Type = null;
+          h2Specs.clear();
+          h2StationTypes.clear();
+          usePrice = false;
+          priceRange = const RangeValues(0, 15000);
+          useAvailability = false;
+          availableMin = 0;
+          parkingCategory = null;
+          parkingType = null;
+          parkingFeeType = null;
+        }
+
+        Widget wrapIfDisabled(Widget child) {
+          if (enabled) return child;
+          return Opacity(
+            opacity: 0.45,
+            child: IgnorePointer(child: child),
+          );
+        }
+
+        InputDecoration inputDecoration(String label) {
+          return InputDecoration(
+            labelText: label,
+            border: const OutlineInputBorder(),
+            isDense: true,
+            contentPadding:
+            const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          );
+        }
+
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            return DraggableScrollableSheet(
+              expand: false,
+              initialChildSize: 0.9,
+              maxChildSize: 0.95,
+              minChildSize: 0.6,
+              builder: (context, scrollController) {
+                return Padding(
+                  padding: EdgeInsets.only(
+                    left: 16,
+                    right: 16,
+                    bottom: MediaQuery.of(context).viewInsets.bottom + 16,
+                    top: 8,
+                  ),
+                  child: ListView(
+                    controller: scrollController,
+                    children: [
+                      Row(
+                        children: [
+                          Text(
+                            '상세 필터',
+                            style: Theme.of(context)
+                                .textTheme
+                                .titleMedium
+                                ?.copyWith(fontWeight: FontWeight.bold),
+                          ),
+                          const Spacer(),
+                          TextButton(
+                            onPressed: () {
+                              setModalState(reset);
+                            },
+                            child: const Text('초기화'),
+                          ),
+                        ],
+                      ),
+                      SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        value: enabled,
+                        onChanged: (v) {
+                          setModalState(() {
+                            enabled = v;
+                          });
+                        },
+                        title: const Text('필터 켜기'),
+                        subtitle: const Text('꺼져 있으면 전체 데이터를 불러옵니다.'),
+                      ),
+                      wrapIfDisabled(
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const SizedBox(height: 6),
+                            Text(
+                              '검색 반경: ${radiusKm.toStringAsFixed(1)} km',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w600,
+                                color: Colors.black87,
+                              ),
+                            ),
+                            Slider(
+                              value: radiusKm,
+                              min: 0.5,
+                              max: 20,
+                              divisions: 39,
+                              label: '${radiusKm.toStringAsFixed(1)}km',
+                              onChanged: (value) {
+                                setModalState(() {
+                                  radiusKm = value;
+                                });
+                              },
+                            ),
+                            const SizedBox(height: 10),
+                            Text(
+                              '표시 대상',
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .titleSmall
+                                  ?.copyWith(fontWeight: FontWeight.bold),
+                            ),
+                            const SizedBox(height: 6),
+                            Wrap(
+                              spacing: 8,
+                              runSpacing: 4,
+                              children: [
+                                FilterChip(
+                                  label: const Text('EV'),
+                                  selected: includeEv,
+                                  onSelected: (v) {
+                                    setModalState(() {
+                                      includeEv = v;
+                                    });
+                                  },
+                                ),
+                                FilterChip(
+                                  label: const Text('H2'),
+                                  selected: includeH2,
+                                  onSelected: (v) {
+                                    setModalState(() {
+                                      includeH2 = v;
+                                    });
+                                  },
+                                ),
+                                FilterChip(
+                                  label: const Text('주차장'),
+                                  selected: includeParking,
+                                  onSelected: (v) {
+                                    setModalState(() {
+                                      includeParking = v;
+                                    });
+                                  },
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 16),
+                            if (includeEv || includeH2 || includeParking)
+                              const SizedBox.shrink()
+                            else
+                              const Text(
+                                '표시 대상을 선택하면 옵션이 나타납니다.',
+                                style: TextStyle(color: Colors.black54),
+                              ),
+                            if (includeEv) ...[
+                              Text(
+                                'EV 옵션',
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .titleSmall
+                                    ?.copyWith(fontWeight: FontWeight.bold),
+                              ),
+                              const SizedBox(height: 8),
+                              DropdownButtonFormField<String?>(
+                                value: evType,
+                                decoration: inputDecoration('데이터 소스'),
+                                items: [
+                                  const DropdownMenuItem<String?>(
+                                    value: null,
+                                    child: Text('전체'),
+                                  ),
+                                  ..._evApiTypes.map(
+                                        (t) => DropdownMenuItem<String?>(
+                                      value: t,
+                                      child: Text(t),
+                                    ),
+                                  ),
+                                ],
+                                onChanged: (value) =>
+                                    setModalState(() => evType = value),
+                              ),
+                              const SizedBox(height: 8),
+                              DropdownButtonFormField<String?>(
+                                value: evStatus,
+                                decoration: inputDecoration('상태'),
+                                items: [
+                                  const DropdownMenuItem<String?>(
+                                    value: null,
+                                    child: Text('전체'),
+                                  ),
+                                  ...evStatusOptions.map(
+                                        (s) => DropdownMenuItem<String?>(
+                                      value: s,
+                                      child: Text(s),
+                                    ),
+                                  ),
+                                ],
+                                onChanged: (value) =>
+                                    setModalState(() => evStatus = value),
+                              ),
+                              const SizedBox(height: 8),
+                              DropdownButtonFormField<String?>(
+                                value: evCharger,
+                                decoration: inputDecoration('충전기 타입'),
+                                items: [
+                                  const DropdownMenuItem<String?>(
+                                    value: null,
+                                    child: Text('전체'),
+                                  ),
+                                  ...evChargerOptions.map(
+                                        (s) => DropdownMenuItem<String?>(
+                                      value: s,
+                                      child: Text(s),
+                                    ),
+                                  ),
+                                ],
+                                onChanged: (value) =>
+                                    setModalState(() => evCharger = value),
+                              ),
+                              const SizedBox(height: 16),
+                            ],
+                            if (includeH2) ...[
+                              Text(
+                                'H2 옵션',
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .titleSmall
+                                    ?.copyWith(fontWeight: FontWeight.bold),
+                              ),
+                              const SizedBox(height: 8),
+                              DropdownButtonFormField<String?>(
+                                value: h2Type,
+                                decoration: inputDecoration('데이터 소스'),
+                                items: [
+                                  const DropdownMenuItem<String?>(
+                                    value: null,
+                                    child: Text('전체'),
+                                  ),
+                                  ..._h2ApiTypes.map(
+                                        (t) => DropdownMenuItem<String?>(
+                                      value: t,
+                                      child: Text(t),
+                                    ),
+                                  ),
+                                ],
+                                onChanged: (value) =>
+                                    setModalState(() => h2Type = value),
+                              ),
+                              const SizedBox(height: 10),
+                              Text(
+                                '규격(SPEC)',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.black87,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Wrap(
+                                spacing: 8,
+                                runSpacing: 4,
+                                children: _defaultH2Specs.map((spec) {
+                                  final selected = h2Specs.contains(spec);
+                                  return FilterChip(
+                                    label: Text(spec),
+                                    selected: selected,
+                                    onSelected: (v) {
+                                      setModalState(() {
+                                        if (v) {
+                                          h2Specs.add(spec);
+                                        } else {
+                                          h2Specs.remove(spec);
+                                        }
+                                      });
+                                    },
+                                  );
+                                }).toList(),
+                              ),
+                              const SizedBox(height: 10),
+                              Text(
+                                '충전소 유형',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.black87,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Wrap(
+                                spacing: 8,
+                                runSpacing: 4,
+                                children:
+                                _defaultH2StationTypes.map((typeLabel) {
+                                  final selected =
+                                  h2StationTypes.contains(typeLabel);
+                                  return FilterChip(
+                                    label: Text(typeLabel),
+                                    selected: selected,
+                                    onSelected: (v) {
+                                      setModalState(() {
+                                        if (v) {
+                                          h2StationTypes.add(typeLabel);
+                                        } else {
+                                          h2StationTypes.remove(typeLabel);
+                                        }
+                                      });
+                                    },
+                                  );
+                                }).toList(),
+                              ),
+                              const SizedBox(height: 10),
+                              SwitchListTile(
+                                contentPadding: EdgeInsets.zero,
+                                value: usePrice,
+                                onChanged: (v) {
+                                  setModalState(() {
+                                    usePrice = v;
+                                  });
+                                },
+                                title: const Text('가격 필터 사용'),
+                                subtitle:
+                                const Text('kg당 가격 범위를 지정할 수 있습니다.'),
+                              ),
+                              if (usePrice) ...[
+                                RangeSlider(
+                                  values: priceRange,
+                                  min: 0,
+                                  max: 20000,
+                                  divisions: 40,
+                                  labels: RangeLabels(
+                                    '${priceRange.start.round()}원',
+                                    '${priceRange.end.round()}원',
+                                  ),
+                                  onChanged: (value) {
+                                    setModalState(() {
+                                      priceRange = value;
+                                    });
+                                  },
+                                ),
+                                Row(
+                                  mainAxisAlignment:
+                                  MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Text(
+                                        '최소 ${priceRange.start.round()}원/kg'),
+                                    Text(
+                                        '최대 ${priceRange.end.round()}원/kg'),
+                                  ],
+                                ),
+                                const SizedBox(height: 10),
+                              ],
+                              SwitchListTile(
+                                contentPadding: EdgeInsets.zero,
+                                value: useAvailability,
+                                onChanged: (v) {
+                                  setModalState(() {
+                                    useAvailability = v;
+                                  });
+                                },
+                                title: const Text('가용 슬롯 필터'),
+                                subtitle: const Text('동시 충전 가능 대수 기준'),
+                              ),
+                              if (useAvailability)
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Slider(
+                                      value: availableMin.toDouble(),
+                                      min: 0,
+                                      max: 10,
+                                      divisions: 10,
+                                      label: '$availableMin대 이상',
+                                      onChanged: (value) {
+                                        setModalState(() {
+                                          availableMin = value.round();
+                                        });
+                                      },
+                                    ),
+                                    Text(
+                                      '$availableMin대 이상',
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w600,
+                                        color: Colors.black87,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              const SizedBox(height: 16),
+                            ],
+                            if (includeParking) ...[
+                              Text(
+                                '주차장 옵션',
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .titleSmall
+                                    ?.copyWith(fontWeight: FontWeight.bold),
+                              ),
+                              const SizedBox(height: 8),
+                              DropdownButtonFormField<String?>(
+                                value: parkingCategory,
+                                decoration: inputDecoration('구분'),
+                                items: [
+                                  const DropdownMenuItem<String?>(
+                                    value: null,
+                                    child: Text('전체'),
+                                  ),
+                                  ..._parkingCategoryOptions.map(
+                                        (c) => DropdownMenuItem<String?>(
+                                      value: c,
+                                      child: Text(c),
+                                    ),
+                                  ),
+                                ],
+                                onChanged: (value) =>
+                                    setModalState(() => parkingCategory = value),
+                              ),
+                              const SizedBox(height: 8),
+                              DropdownButtonFormField<String?>(
+                                value: parkingType,
+                                decoration: inputDecoration('유형'),
+                                items: [
+                                  const DropdownMenuItem<String?>(
+                                    value: null,
+                                    child: Text('전체'),
+                                  ),
+                                  ..._parkingTypeOptions.map(
+                                        (c) => DropdownMenuItem<String?>(
+                                      value: c,
+                                      child: Text(c),
+                                    ),
+                                  ),
+                                ],
+                                onChanged: (value) =>
+                                    setModalState(() => parkingType = value),
+                              ),
+                              const SizedBox(height: 8),
+                              DropdownButtonFormField<String?>(
+                                value: parkingFeeType,
+                                decoration: inputDecoration('요금'),
+                                items: [
+                                  const DropdownMenuItem<String?>(
+                                    value: null,
+                                    child: Text('전체'),
+                                  ),
+                                  ..._parkingFeeTypeOptions.map(
+                                        (c) => DropdownMenuItem<String?>(
+                                      value: c,
+                                      child: Text(c),
+                                    ),
+                                  ),
+                                ],
+                                onChanged: (value) => setModalState(
+                                        () => parkingFeeType = value),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      Row(
+                        children: [
+                          TextButton(
+                            onPressed: () {
+                              setModalState(reset);
+                            },
+                            child: const Text('초기화'),
+                          ),
+                          const Spacer(),
+                          FilledButton.icon(
+                            icon: const Icon(Icons.check),
+                            label: const Text('적용'),
+                            onPressed: () {
+                              Navigator.of(context).pop(
+                                _NearbyFilterResult(
+                                  enabled: enabled,
+                                  radiusKm: radiusKm,
+                                  includeEv: includeEv,
+                                  includeH2: includeH2,
+                                  includeParking: includeParking,
+                                  evType: includeEv ? evType : null,
+                                  evChargerType:
+                                  includeEv ? evCharger : null,
+                                  evStatus: includeEv ? evStatus : null,
+                                  h2Type: includeH2 ? h2Type : null,
+                                  h2StationTypes:
+                                  includeH2 ? h2StationTypes : {},
+                                  h2Specs: includeH2 ? h2Specs : {},
+                                  priceMin: includeH2 && usePrice
+                                      ? priceRange.start.round()
+                                      : null,
+                                  priceMax: includeH2 && usePrice
+                                      ? priceRange.end.round()
+                                      : null,
+                                  availableMin:
+                                  includeH2 && useAvailability
+                                      ? availableMin
+                                      : null,
+                                  parkingCategory:
+                                  includeParking ? parkingCategory : null,
+                                  parkingType:
+                                  includeParking ? parkingType : null,
+                                  parkingFeeType: includeParking
+                                      ? parkingFeeType
+                                      : null,
+                                ),
+                              );
+                            },
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                );
+              },
+            );
+          },
+        );
+      },
+    );
+
+    if (result == null) return;
+
+    if (!result.enabled) {
+      setState(() {
+        _useNearbyFilter = false;
+        _includeEvFilter = true;
+        _includeH2Filter = true;
+        _includeParkingFilter = true;
+      });
+      await _loadStationsRespectingFilter(showSpinner: true);
+      return;
+    }
+
+    setState(() {
+      _useNearbyFilter = true;
+      _radiusKmFilter = result.radiusKm;
+      _includeEvFilter = result.includeEv;
+      _includeH2Filter = result.includeH2;
+      _includeParkingFilter = result.includeParking;
+      _evTypeFilter = result.evType;
+      _evChargerTypeFilter = result.evChargerType;
+      _evStatusFilter = result.evStatus;
+      _h2TypeFilter = result.h2Type;
+      _h2SpecFilter
+        ..clear()
+        ..addAll(result.h2Specs);
+      _h2StationTypeFilter
+        ..clear()
+        ..addAll(result.h2StationTypes);
+      _h2PriceMin = result.priceMin;
+      _h2PriceMax = result.priceMax;
+      _useAvailabilityFilter = result.availableMin != null;
+      _h2AvailableMin = result.availableMin ?? 0;
+      _parkingCategoryFilter = result.parkingCategory;
+      _parkingTypeFilter = result.parkingType;
+      _parkingFeeTypeFilter = result.parkingFeeType;
+    });
+
+    await _loadStationsRespectingFilter(showSpinner: true);
+  }
+
+  Widget _buildNearbyFilterButton() {
+    return Row(
+      children: [
+        ElevatedButton.icon(
+          style: ElevatedButton.styleFrom(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            backgroundColor:
+            _useNearbyFilter ? Colors.black.withOpacity(0.85) : Colors.white,
+            foregroundColor:
+            _useNearbyFilter ? Colors.white : Colors.black87,
+            elevation: _useNearbyFilter ? 2 : 0,
+            side: BorderSide(
+              color:
+              _useNearbyFilter ? Colors.black54 : Colors.grey.shade300,
+            ),
+          ),
+          onPressed: _openNearbyFilterSheet,
+          icon: const Icon(Icons.tune),
+          label: Text(_useNearbyFilter ? '필터 수정' : '상세 필터'),
+        ),
+        const SizedBox(width: 8),
+        if (_useNearbyFilter)
+          Flexible(
+            child: Text(
+              '적용 반경 ${_radiusKmFilter.toStringAsFixed(1)}km',
+              style: const TextStyle(
+                color: Colors.black87,
+                fontWeight: FontWeight.w600,
+              ),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+      ],
     );
   }
 
@@ -516,11 +1241,11 @@ class _MapScreenState extends State<MapScreen> {
   }
 
   Future<void> _focusAndOpen(
-    DynamicIslandAction action, {
-    void Function(ParkingLot lot)? onParking,
-    void Function(EVStation station)? onEv,
-    void Function(H2Station station)? onH2,
-  }) async {
+      DynamicIslandAction action, {
+        void Function(ParkingLot lot)? onParking,
+        void Function(EVStation station)? onEv,
+        void Function(H2Station station)? onH2,
+      }) async {
     final lat = action.lat;
     final lng = action.lng;
     if (lat != null && lng != null) {
@@ -576,9 +1301,9 @@ class _MapScreenState extends State<MapScreen> {
   }
 
   List<DynamicIslandAction> _buildNearestParking(
-    Position position, {
-    int take = 3,
-  }) {
+      Position position, {
+        int take = 3,
+      }) {
     final lots = _parkingLotsWithCoordinates.toList();
     lots.sort((a, b) {
       final da = _distance(position, a.latitude!, a.longitude!);
@@ -842,6 +1567,117 @@ class _MapScreenState extends State<MapScreen> {
     unawaited(_renderStationMarkers());
   }
 
+  Future<void> _loadStationsRespectingFilter({bool showSpinner = false}) async {
+    if (_isManualRefreshing && showSpinner) return;
+    if (showSpinner) {
+      setState(() => _isManualRefreshing = true);
+    }
+    if (_useNearbyFilter) {
+      await _runNearbySearch();
+    } else {
+      await _mapController.loadAllStations();
+    }
+    if (!mounted) return;
+    if (showSpinner) {
+      setState(() => _isManualRefreshing = false);
+    }
+    if (_isMapLoaded && _controller != null) {
+      unawaited(_renderStationMarkers());
+    }
+  }
+
+  Future<void> _runNearbySearch() async {
+    final position = await _getCurrentPosition();
+    if (!mounted) return;
+    if (position == null) {
+      _showSnack('GPS 위치를 가져올 수 없어 전체 데이터를 유지합니다.');
+      return;
+    }
+
+    final params = <String, String>{
+      'lat': position.latitude.toString(),
+      'lon': position.longitude.toString(),
+      'radius': (_radiusKmFilter * 1000).round().toString(),
+    };
+
+    void addIfPresent(String key, String? value) {
+      if (value != null && value.trim().isNotEmpty) {
+        params[key] = value.trim();
+      }
+    }
+
+    void addCsv(String key, Set<String> values) {
+      if (values.isNotEmpty) {
+        params[key] = values.join(',');
+      }
+    }
+
+    // 포함 여부
+    params['includeEv'] = _includeEvFilter.toString();
+    params['includeH2'] = _includeH2Filter.toString();
+    params['includeParking'] = _includeParkingFilter.toString();
+
+    if (_includeEvFilter) {
+      addIfPresent('evType', _evTypeFilter == 'ALL' ? null : _evTypeFilter);
+      addIfPresent('evChargerType', _evChargerTypeFilter);
+      addIfPresent('evStatus', _evStatusFilter);
+    }
+
+    if (_includeH2Filter) {
+      addIfPresent('h2Type', _h2TypeFilter == 'ALL' ? null : _h2TypeFilter);
+      addCsv('stationType', _h2StationTypeFilter);
+      addCsv('spec', _h2SpecFilter);
+      if (_h2PriceMin != null) params['priceMin'] = _h2PriceMin.toString();
+      if (_h2PriceMax != null) params['priceMax'] = _h2PriceMax.toString();
+      if (_useAvailabilityFilter && _h2AvailableMin > 0) {
+        params['availableMin'] = _h2AvailableMin.toString();
+      }
+    }
+
+    if (_includeParkingFilter) {
+      addIfPresent('parkingCategory', _parkingCategoryFilter);
+      addIfPresent('parkingType', _parkingTypeFilter);
+      addIfPresent('parkingFeeType', _parkingFeeTypeFilter);
+    }
+
+    try {
+      final uri = Uri.parse('$_backendBaseUrl/mapi/search/nearby')
+          .replace(queryParameters: params);
+      final token = await TokenStorage.getAccessToken();
+      final headers = <String, String>{};
+      if (token != null && token.isNotEmpty) {
+        headers['Authorization'] = 'Bearer $token';
+      }
+      final res = await http.get(uri, headers: headers);
+      if (res.statusCode == 200) {
+        final decoded = jsonDecode(res.body);
+        final h2 = (decoded['h2'] as List?)
+                ?.map((e) => H2Station.fromJson(e as Map<String, dynamic>))
+                .toList() ??
+            <H2Station>[];
+        final ev = (decoded['ev'] as List?)
+                ?.map((e) => EVStation.fromJson(e as Map<String, dynamic>))
+                .toList() ??
+            <EVStation>[];
+        final parking = (decoded['parkingLots'] as List?)
+                ?.map((e) => ParkingLot.fromJson(e as Map<String, dynamic>))
+                .toList() ??
+            <ParkingLot>[];
+        _mapController.updateFromNearby(
+          h2Stations: h2,
+          evStations: ev,
+          parkingLots: parking,
+        );
+      } else {
+        debugPrint('Nearby search failed: ${res.statusCode} ${res.body}');
+        _showSnack('상세 필터 검색 실패 (${res.statusCode})');
+      }
+    } catch (e) {
+      debugPrint('Nearby search error: $e');
+      _showSnack('상세 필터 검색 중 오류가 발생했습니다.');
+    }
+  }
+
   /// 지도에 표시할 모든 마커를 다시 생성하고 등록한다.
   Future<void> _renderStationMarkers() async {
     final controller = _controller;
@@ -878,9 +1714,9 @@ class _MapScreenState extends State<MapScreen> {
 
     debugPrint(
       '🎯 Render markers (filtered): '
-      'H2=${_mapController.showH2 ? _mapController.h2StationsWithCoords.length : 0}, '
-      'EV=${_mapController.showEv ? _mapController.evStationsWithCoords.length : 0}, '
-      'P=${_mapController.showParking ? _mapController.parkingLotsWithCoords.length : 0}',
+          'H2=${_mapController.showH2 ? _mapController.h2StationsWithCoords.length : 0}, '
+          'EV=${_mapController.showEv ? _mapController.evStationsWithCoords.length : 0}, '
+          'P=${_mapController.showParking ? _mapController.parkingLotsWithCoords.length : 0}',
     );
 
     if (overlays.isEmpty) return;
@@ -897,14 +1733,7 @@ class _MapScreenState extends State<MapScreen> {
   }
 
   Future<void> _refreshStations() async {
-    if (_isManualRefreshing) return;
-    setState(() => _isManualRefreshing = true);
-    await _mapController.loadAllStations();
-    if (!mounted) return;
-    setState(() => _isManualRefreshing = false);
-    if (_isMapLoaded && _controller != null) {
-      unawaited(_renderStationMarkers());
-    }
+    await _loadStationsRespectingFilter(showSpinner: true);
   }
 
   // --- 상태 색상 매핑 ---

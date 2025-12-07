@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_naver_map/flutter_naver_map.dart';
@@ -139,5 +139,26 @@ class MapController extends ChangeNotifier {
     if (_showEv) overlays.addAll(evStationsWithCoords.map(evBuilder));
     if (_showParking) overlays.addAll(parkingLotsWithCoords.map(parkingBuilder));
     return overlays;
+  }
+
+  /// nearbySearch 결과를 통째로 반영할 때 사용한다.
+  void updateFromNearby({
+    List<H2Station>? h2Stations,
+    List<EVStation>? evStations,
+    List<ParkingLot>? parkingLots,
+  }) {
+    if (h2Stations != null) {
+      _h2Stations = h2Stations;
+      _isLoadingH2 = false;
+    }
+    if (evStations != null) {
+      _evStations = evStations;
+      _isLoadingEv = false;
+    }
+    if (parkingLots != null) {
+      _parkingLots = parkingLots;
+      _isLoadingParking = false;
+    }
+    notifyListeners();
   }
 }
