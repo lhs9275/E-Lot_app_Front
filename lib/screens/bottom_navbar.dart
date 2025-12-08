@@ -137,8 +137,7 @@ class MainBottomNavBar extends StatelessWidget {
   // 가운데 캐릭터 이미지 빌더
   Widget _buildCenterImageItem(BuildContext context) {
     return GestureDetector(
-      onTap: () {
-      },
+      onTap: () => _navigateHome(context),
       child: Container(
         width: 100, // 🚀 크기를 100으로 대폭 키움
         height: 100,
@@ -150,6 +149,14 @@ class MainBottomNavBar extends StatelessWidget {
           fit: BoxFit.contain, // 박스 크기(100x100)에 맞춰 비율 유지하며 꽉 채움
         ),
       ),
+    );
+  }
+
+  void _navigateHome(BuildContext context) {
+    if (currentIndex == 0) return; // 이미 홈이면 무시
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const MapScreen()),
+      (_) => false,
     );
   }
 }

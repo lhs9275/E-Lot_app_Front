@@ -176,9 +176,9 @@ class _MapScreenState extends State<MapScreen> {
 
   // 상세 필터 상태
   bool _useNearbyFilter = false;
-  bool _includeEvFilter = false;
-  bool _includeH2Filter = false;
-  bool _includeParkingFilter = false;
+  bool _includeEvFilter = true;
+  bool _includeH2Filter = true;
+  bool _includeParkingFilter = true;
   double _radiusKmFilter = 5;
 
   String? _evTypeFilter;
@@ -202,6 +202,10 @@ class _MapScreenState extends State<MapScreen> {
   late final NCameraPosition _initialCamera = NCameraPosition(
     target: _initialTarget,
     zoom: 8.5,
+  );
+  static const NLatLngBounds _koreaBounds = NLatLngBounds(
+    southWest: NLatLng(32.5, 123.5), // 제주 포함 남서쪽
+    northEast: NLatLng(39.5, 132.5), // 독도 포함 북동쪽
   );
 
   /// ⭐ 백엔드 주소 (clos21)
@@ -345,6 +349,8 @@ class _MapScreenState extends State<MapScreen> {
             NaverMap(
               options: NaverMapViewOptions(
                 initialCameraPosition: _initialCamera,
+                extent: _koreaBounds,
+                minZoom: 4.8, // 제주까지 한 화면에 담길 정도로 축소 허용
                 locationButtonEnable: true,
                 contentPadding: EdgeInsets.only(bottom: mapBottomPadding),
               ),
@@ -431,9 +437,9 @@ class _MapScreenState extends State<MapScreen> {
           .toList(),
       onResultTap: (item) {
         if (item.h2 != null) {
-          _showH2StationBottomSheet(item.h2 as H2Station);
+          _showH2StationPopup(item.h2 as H2Station);
         } else if (item.ev != null) {
-          _showEvStationBottomSheet(item.ev as EVStation);
+          _showEvStationPopup(item.ev as EVStation);
         }
       },
       onResultMarkerTap: (item) => _focusTo(item.lat, item.lng),
@@ -1149,9 +1155,9 @@ class _MapScreenState extends State<MapScreen> {
     );
 
     if (item.isH2 && item.h2 != null) {
-      _showH2StationBottomSheet(item.h2!);
+      _showH2StationPopup(item.h2!);
     } else if (!item.isH2 && item.ev != null) {
-      _showEvStationBottomSheet(item.ev!);
+      _showEvStationPopup(item.ev!);
     }
   }
 
@@ -1187,7 +1193,7 @@ class _MapScreenState extends State<MapScreen> {
       final lng = foundH2.longitude!;
       unawaited(_focusTo(lat, lng));
       FocusScope.of(context).unfocus();
-      _showH2StationBottomSheet(foundH2);
+      _showH2StationPopup(foundH2);
       return;
     }
 
@@ -1205,7 +1211,7 @@ class _MapScreenState extends State<MapScreen> {
       final lng = foundEv.longitude!;
       unawaited(_focusTo(lat, lng));
       FocusScope.of(context).unfocus();
-      _showEvStationBottomSheet(foundEv);
+      _showEvStationPopup(foundEv);
       return;
     }
 
@@ -1225,15 +1231,15 @@ class _MapScreenState extends State<MapScreen> {
     switch (action.type) {
       case 'parking':
         _ensureFilterForType(parking: true);
-        await _focusAndOpen(action, onParking: _showParkingLotBottomSheet);
+        await _focusAndOpen(action, onParking: _showParkingLotPopup);
         break;
       case 'ev':
         _ensureFilterForType(ev: true);
-        await _focusAndOpen(action, onEv: _showEvStationBottomSheet);
+        await _focusAndOpen(action, onEv: _showEvStationPopup);
         break;
       case 'h2':
         _ensureFilterForType(h2: true);
-        await _focusAndOpen(action, onH2: _showH2StationBottomSheet);
+        await _focusAndOpen(action, onH2: _showH2StationPopup);
         break;
       default:
         break;
@@ -1697,18 +1703,18 @@ class _MapScreenState extends State<MapScreen> {
         station: station,
         tint: _h2MarkerBaseColor,
         statusColor: _h2StatusColor,
-        onTap: _showH2StationBottomSheet,
+        onTap: _showH2StationPopup,
       ),
       evBuilder: (station) => buildEvMarker(
         station: station,
         tint: _evMarkerBaseColor,
         statusColor: _evStatusColor,
-        onTap: _showEvStationBottomSheet,
+        onTap: _showEvStationPopup,
       ),
       parkingBuilder: (lot) => buildParkingMarker(
         lot: lot,
         tint: _parkingMarkerBaseColor,
-        onTap: _showParkingLotBottomSheet,
+        onTap: _showParkingLotPopup,
       ),
     );
 
@@ -1816,289 +1822,581 @@ class _MapScreenState extends State<MapScreen> {
     }
   }
 
-  // --- 바텀 시트 ---
-  /// 수소 충전소 아이콘을 탭했을 때 상세 정보를 보여주는 바텀 시트.
-  void _showH2StationBottomSheet(H2Station station) async {
+  // --- 팝업 UI (마커 상세) ---
+  Future<void> _showFloatingPanel({
+    required Color accentColor,
+    required IconData icon,
+    required String title,
+    String? subtitle,
+    required Widget Function(StateSetter setState) contentBuilder,
+    Widget? Function(StateSetter setState)? trailingBuilder,
+  }) {
+    return showGeneralDialog(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: '닫기',
+      barrierColor: Colors.black.withOpacity(0.45),
+      transitionDuration: const Duration(milliseconds: 220),
+      pageBuilder: (context, _, __) {
+        final maxHeight = MediaQuery.of(context).size.height * 0.75;
+        return SafeArea(
+          child: Center(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+              child: StatefulBuilder(
+                builder: (context, setPopupState) {
+                  return ConstrainedBox(
+                    constraints: BoxConstraints(
+                      maxWidth: 460,
+                      maxHeight: maxHeight,
+                    ),
+                    child: Material(
+                      color: Colors.transparent,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(22),
+                          gradient: LinearGradient(
+                            colors: [
+                              accentColor.withOpacity(0.08),
+                              Colors.white,
+                            ],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.12),
+                              blurRadius: 22,
+                              offset: const Offset(0, 14),
+                            ),
+                          ],
+                        ),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(22),
+                          child: Material(
+                            color: Colors.white.withOpacity(0.94),
+                            child: SingleChildScrollView(
+                              padding: EdgeInsets.zero,
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Padding(
+                                    padding:
+                                        const EdgeInsets.fromLTRB(18, 16, 12, 10),
+                                    child: Row(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        _buildPopupIcon(icon, accentColor),
+                                        const SizedBox(width: 12),
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                title,
+                                                style: Theme.of(context)
+                                                    .textTheme
+                                                    .titleMedium
+                                                    ?.copyWith(
+                                                      fontWeight: FontWeight.w800,
+                                                      letterSpacing: -0.2,
+                                                    ),
+                                              ),
+                                              if (subtitle != null) ...[
+                                                const SizedBox(height: 4),
+                                                Text(
+                                                  subtitle!,
+                                                  style: TextStyle(
+                                                    color: Colors.grey.shade700,
+                                                    fontWeight: FontWeight.w600,
+                                                  ),
+                                                ),
+                                              ],
+                                            ],
+                                          ),
+                                        ),
+                                        if (trailingBuilder != null)
+                                          Padding(
+                                            padding: const EdgeInsets.only(top: 2),
+                                            child: trailingBuilder(setPopupState),
+                                          ),
+                                        IconButton(
+                                          onPressed: () =>
+                                              Navigator.of(context).pop(),
+                                          icon: const Icon(Icons.close_rounded),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  const Divider(
+                                    height: 1,
+                                    thickness: 0.7,
+                                    indent: 12,
+                                    endIndent: 12,
+                                  ),
+                                  Padding(
+                                    padding: const EdgeInsets.fromLTRB(
+                                      18,
+                                      12,
+                                      18,
+                                      14,
+                                    ),
+                                    child: contentBuilder(setPopupState),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ),
+        );
+      },
+      transitionBuilder: (context, animation, _, child) {
+        final curved = Curves.easeOutCubic.transform(animation.value);
+        return Transform.translate(
+          offset: Offset(0, (1 - curved) * 18),
+          child: Transform.scale(
+            scale: 0.96 + 0.04 * curved,
+            child: Opacity(
+              opacity: curved,
+              child: child,
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildPopupIcon(IconData icon, Color accentColor) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: accentColor.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Icon(icon, color: accentColor, size: 26),
+    );
+  }
+
+  Widget _buildPopupChip(
+    String text, {
+    IconData? icon,
+    Color? color,
+    Color? textColor,
+  }) {
+    final resolvedTextColor = textColor ?? Colors.grey.shade900;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: color ?? Colors.grey.shade100,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: (textColor ?? Colors.black87).withOpacity(0.08),
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (icon != null) ...[
+            Icon(icon, size: 16, color: resolvedTextColor),
+            const SizedBox(width: 6),
+          ],
+          Text(
+            text,
+            style: TextStyle(
+              fontWeight: FontWeight.w700,
+              color: resolvedTextColor,
+              letterSpacing: -0.1,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPopupInfoRow({
+    required IconData icon,
+    required String label,
+    required String value,
+    Color? valueColor,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: Colors.grey.shade100,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(icon, size: 18, color: Colors.grey.shade700),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: TextStyle(
+                    color: Colors.grey.shade600,
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  value,
+                  style: TextStyle(
+                    color: valueColor ?? Colors.black87,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPopupActions({
+    required Color accentColor,
+    required VoidCallback onWriteReview,
+    required VoidCallback onSeeReviews,
+  }) {
+    return Row(
+      children: [
+        Expanded(
+          child: FilledButton.icon(
+            style: FilledButton.styleFrom(
+              backgroundColor: accentColor,
+              padding: const EdgeInsets.symmetric(vertical: 12),
+            ),
+            icon: const Icon(Icons.rate_review_rounded),
+            label: const Text('리뷰 작성'),
+            onPressed: onWriteReview,
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: OutlinedButton.icon(
+            style: OutlinedButton.styleFrom(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              side: BorderSide(color: accentColor.withOpacity(0.65)),
+              foregroundColor: accentColor,
+            ),
+            icon: const Icon(Icons.list_alt_rounded),
+            label: const Text('리뷰 목록'),
+            onPressed: onSeeReviews,
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// 수소 충전소 아이콘을 탭했을 때 떠 있는 카드 형태로 상세 정보를 보여준다.
+  void _showH2StationPopup(H2Station station) async {
     if (!mounted) return;
 
-    // 🔁 바텀시트 열기 전에 서버 기준 즐겨찾기 동기화
     await _syncFavoritesFromServer();
     if (!mounted) return;
 
-    showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      builder: (context) {
-        // 바텀시트 안 전용 setState를 위한 StatefulBuilder
-        return StatefulBuilder(
-          builder: (context, setSheetState) {
-            final isFav = _isFavoriteStation(station);
-
-            return Padding(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(
-                        child: Text(
-                          station.stationName,
-                          style: Theme.of(context).textTheme.titleMedium
-                              ?.copyWith(fontWeight: FontWeight.bold),
-                        ),
-                      ),
-                      IconButton(
-                        icon: Icon(
-                          isFav ? Icons.star : Icons.star_border,
-                          color: isFav ? Colors.amber : Colors.grey,
-                        ),
-                        onPressed: () async {
-                          await _toggleFavoriteStation(station);
-                          setSheetState(() {}); // 별 상태 다시 그림
-                        },
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  _buildStationField('운영 상태', station.statusName),
-                  _buildStationField('대기 차량', '${station.waitingCount ?? 0}대'),
-                  _buildStationField(
-                    '최대 충전 가능',
-                    station.maxChargeCount != null
-                        ? '${station.maxChargeCount}대'
-                        : '정보 없음',
-                  ),
-                  _buildStationField(
-                    '최종 갱신',
-                    station.lastModifiedAt ?? '정보 없음',
-                  ),
-                  const SizedBox(height: 16),
-
-                  /// 리뷰 버튼 (작성 / 목록)
-                  Row(
-                    children: [
-                      Expanded(
-                        child: FilledButton.icon(
-                          icon: const Icon(Icons.rate_review),
-                          label: const Text('리뷰 작성하기'),
-                          onPressed: () {
-                            Navigator.of(context).pop();
-                            Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder: (_) => ReviewPage(
-                                  stationId: station.stationId,
-                                  placeName: station.stationName,
-                                ),
-                              ),
-                            );
-                          },
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          icon: const Icon(Icons.list_alt_rounded),
-                          label: const Text('리뷰 목록'),
-                          onPressed: () {
-                            Navigator.of(context).pop();
-                            Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder: (_) => ReviewListPage(
-                                  stationId: station.stationId,
-                                  stationName: station.stationName,
-                                ),
-                              ),
-                            );
-                          },
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            );
+    await _showFloatingPanel(
+      accentColor: _h2MarkerBaseColor,
+      icon: Icons.local_gas_station_rounded,
+      title: station.stationName,
+      subtitle: '수소 충전소',
+      trailingBuilder: (setPopupState) {
+        final isFav = _isFavoriteStation(station);
+        return IconButton(
+          tooltip: '즐겨찾기',
+          icon: Icon(
+            isFav ? Icons.star_rounded : Icons.star_border_rounded,
+            color: isFav ? Colors.amber : Colors.grey.shade500,
+          ),
+          onPressed: () async {
+            await _toggleFavoriteStation(station);
+            setPopupState(() {});
           },
         );
       },
-    );
-  }
+      contentBuilder: (_) {
+        final statusColor = _h2StatusColor(station.statusName);
+        final waiting = station.waitingCount ?? 0;
 
-  /// 주차장 마커를 탭했을 때 상세 정보를 보여주는 바텀 시트.
-  void _showParkingLotBottomSheet(ParkingLot lot) {
-    if (!mounted) return;
-
-    showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      builder: (context) {
-        return Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                lot.name,
-                style: Theme.of(
-                  context,
-                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 8),
-              _buildStationField('주소', lot.address ?? '주소 정보 없음'),
-              _buildStationField('주차 가능', _formatParkingSpaces(lot)),
-              _buildStationField(
-                '요금',
-                lot.feeInfo?.isNotEmpty == true ? lot.feeInfo! : '요금 정보 없음',
-              ),
-              _buildStationField(
-                '문의',
-                lot.tel?.isNotEmpty == true ? lot.tel! : '연락처 정보 없음',
-              ),
-              const SizedBox(height: 16),
-              Row(
-                children: [
-                  Expanded(
-                    child: FilledButton.icon(
-                      style: FilledButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 10),
-                      ),
-                      icon: const Icon(Icons.rate_review, size: 18),
-                      label: const Text('리뷰 작성하기'),
-                      onPressed: () {
-                        Navigator.of(context).pop();
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => ReviewPage(
-                              stationId: lot.id,
-                              placeName: lot.name,
-                            ),
-                          ),
-                        );
-                      },
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Wrap(
+              spacing: 10,
+              runSpacing: 10,
+              children: [
+                _buildPopupChip(
+                  station.statusName,
+                  icon: Icons.circle,
+                  color: statusColor.withOpacity(0.14),
+                  textColor: statusColor,
+                ),
+                _buildPopupChip(
+                  '대기 $waiting대',
+                  icon: Icons.hourglass_bottom_rounded,
+                  color: Colors.blueGrey.shade50,
+                ),
+                if (station.maxChargeCount != null)
+                  _buildPopupChip(
+                    '최대 ${station.maxChargeCount}대 동시',
+                    icon: Icons.ev_station_rounded,
+                    color: Colors.blueGrey.shade50,
+                  ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            _buildPopupInfoRow(
+              icon: Icons.bolt_rounded,
+              label: '운영 상태',
+              value: station.statusName,
+              valueColor: statusColor,
+            ),
+            _buildPopupInfoRow(
+              icon: Icons.timer_rounded,
+              label: '최종 갱신',
+              value: station.lastModifiedAt ?? '정보 없음',
+            ),
+            _buildPopupInfoRow(
+              icon: Icons.analytics_outlined,
+              label: '최대 충전 가능',
+              value: station.maxChargeCount != null
+                  ? '${station.maxChargeCount}대'
+                  : '정보 없음',
+            ),
+            _buildPopupInfoRow(
+              icon: Icons.groups_rounded,
+              label: '대기 차량',
+              value: '$waiting대',
+            ),
+            const SizedBox(height: 16),
+            _buildPopupActions(
+              accentColor: _h2MarkerBaseColor,
+              onWriteReview: () {
+                Navigator.of(context).pop();
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => ReviewPage(
+                      stationId: station.stationId,
+                      placeName: station.stationName,
                     ),
                   ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 10),
-                      ),
-                      icon: const Icon(Icons.list_alt_rounded, size: 18),
-                      label: const Text('리뷰 목록'),
-                      onPressed: () {
-                        Navigator.of(context).pop();
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => ReviewListPage(
-                              stationId: lot.id,
-                              stationName: lot.name,
-                            ),
-                          ),
-                        );
-                      },
+                );
+              },
+              onSeeReviews: () {
+                Navigator.of(context).pop();
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => ReviewListPage(
+                      stationId: station.stationId,
+                      stationName: station.stationName,
                     ),
                   ),
-                ],
-              ),
-              const SizedBox(height: 8),
-            ],
-          ),
+                );
+              },
+            ),
+          ],
         );
       },
     );
   }
 
-  /// 전기 충전소 바텀 시트.
-  void _showEvStationBottomSheet(EVStation station) {
+  /// 주차장 마커를 탭했을 때 떠 있는 카드 형태로 상세 정보를 보여준다.
+  void _showParkingLotPopup(ParkingLot lot) async {
     if (!mounted) return;
 
-    showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      builder: (context) {
-        return Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                station.stationName,
-                style: Theme.of(
-                  context,
-                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 8),
-              _buildStationField(
-                '상태',
-                '${station.statusLabel} (${station.status})',
-              ),
-              _buildStationField(
-                '출력',
-                station.outputKw != null ? '${station.outputKw} kW' : '정보 없음',
-              ),
-              _buildStationField('최근 갱신', station.statusUpdatedAt ?? '정보 없음'),
-              _buildStationField(
-                '주소',
-                '${station.address ?? ''} ${station.addressDetail ?? ''}'
-                    .trim(),
-              ),
-              _buildStationField(
-                '무료주차',
-                station.parkingFree == true ? '예' : '아니요',
-              ),
-              _buildStationField(
-                '층/구역',
-                '${station.floor ?? '-'} / ${station.floorType ?? '-'}',
-              ),
-              const SizedBox(height: 16),
+    await _showFloatingPanel(
+      accentColor: _parkingMarkerBaseColor,
+      icon: Icons.local_parking_rounded,
+      title: lot.name,
+      subtitle: '주차장 정보',
+      contentBuilder: (_) {
+        final availability = _formatParkingSpaces(lot);
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Wrap(
+              spacing: 10,
+              runSpacing: 10,
+              children: [
+                _buildPopupChip(
+                  availability,
+                  icon: Icons.event_available_rounded,
+                  color: Colors.orange.shade50,
+                  textColor: Colors.deepOrange,
+                ),
+                if (lot.feeInfo != null && lot.feeInfo!.isNotEmpty)
+                  _buildPopupChip(
+                    lot.feeInfo!,
+                    icon: Icons.payments_rounded,
+                    color: Colors.blueGrey.shade50,
+                  ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            _buildPopupInfoRow(
+              icon: Icons.place_rounded,
+              label: '주소',
+              value: lot.address ?? '주소 정보 없음',
+            ),
+            _buildPopupInfoRow(
+              icon: Icons.call_rounded,
+              label: '문의',
+              value: lot.tel?.isNotEmpty == true ? lot.tel! : '연락처 정보 없음',
+            ),
+            _buildPopupInfoRow(
+              icon: Icons.local_activity_rounded,
+              label: '총 주차면수',
+              value: lot.totalSpaces != null
+                  ? '${lot.totalSpaces}면'
+                  : '정보 없음',
+            ),
+            const SizedBox(height: 16),
+            _buildPopupActions(
+              accentColor: _parkingMarkerBaseColor,
+              onWriteReview: () {
+                Navigator.of(context).pop();
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => ReviewPage(
+                      stationId: lot.id,
+                      placeName: lot.name,
+                    ),
+                  ),
+                );
+              },
+              onSeeReviews: () {
+                Navigator.of(context).pop();
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => ReviewListPage(
+                      stationId: lot.id,
+                      stationName: lot.name,
+                    ),
+                  ),
+                );
+              },
+            ),
+          ],
+        );
+      },
+    );
+  }
 
-              /// 리뷰 버튼 (작성 / 목록)
-              Row(
-                children: [
-                  Expanded(
-                    child: FilledButton.icon(
-                      icon: const Icon(Icons.rate_review),
-                      label: const Text('리뷰 작성하기'),
-                      onPressed: () {
-                        Navigator.of(context).pop();
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => ReviewPage(
-                              stationId: station.stationId,
-                              placeName: station.stationName,
-                            ),
-                          ),
-                        );
-                      },
+  /// 전기 충전소 상세 팝업.
+  void _showEvStationPopup(EVStation station) async {
+    if (!mounted) return;
+
+    await _showFloatingPanel(
+      accentColor: _evMarkerBaseColor,
+      icon: Icons.electric_car_rounded,
+      title: station.stationName,
+      subtitle: '전기 충전소',
+      contentBuilder: (_) {
+        final statusColor = _evStatusColor(station.statusLabel);
+        final outputText =
+            station.outputKw != null ? '${station.outputKw} kW' : '정보 없음';
+        final rawAddress =
+            '${station.address ?? ''} ${station.addressDetail ?? ''}'.trim();
+        final address =
+            rawAddress.isNotEmpty ? rawAddress : '주소 정보 없음';
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Wrap(
+              spacing: 10,
+              runSpacing: 10,
+              children: [
+                _buildPopupChip(
+                  station.statusLabel,
+                  icon: Icons.circle,
+                  color: statusColor.withOpacity(0.14),
+                  textColor: statusColor,
+                ),
+                _buildPopupChip(
+                  '출력 $outputText',
+                  icon: Icons.bolt_rounded,
+                  color: Colors.blueGrey.shade50,
+                ),
+                _buildPopupChip(
+                  station.parkingFree == true ? '무료 주차' : '유료 주차',
+                  icon: Icons.local_parking_rounded,
+                  color: Colors.blueGrey.shade50,
+                  textColor: station.parkingFree == true
+                      ? _evMarkerBaseColor
+                      : Colors.orange,
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            _buildPopupInfoRow(
+              icon: Icons.power_rounded,
+              label: '충전 방식',
+              value: '${station.statusLabel} (${station.status})',
+              valueColor: statusColor,
+            ),
+            _buildPopupInfoRow(
+              icon: Icons.timer_outlined,
+              label: '최근 갱신',
+              value: station.statusUpdatedAt ?? '정보 없음',
+            ),
+            _buildPopupInfoRow(
+              icon: Icons.place_rounded,
+              label: '주소',
+              value: address,
+            ),
+            _buildPopupInfoRow(
+              icon: Icons.layers_rounded,
+              label: '층/구역',
+              value: '${station.floor ?? '-'} / ${station.floorType ?? '-'}',
+            ),
+            const SizedBox(height: 16),
+            _buildPopupActions(
+              accentColor: _evMarkerBaseColor,
+              onWriteReview: () {
+                Navigator.of(context).pop();
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => ReviewPage(
+                      stationId: station.stationId,
+                      placeName: station.stationName,
                     ),
                   ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      icon: const Icon(Icons.list_alt_rounded),
-                      label: const Text('리뷰 목록'),
-                      onPressed: () {
-                        Navigator.of(context).pop();
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => ReviewListPage(
-                              stationId: station.stationId,
-                              stationName: station.stationName,
-                            ),
-                          ),
-                        );
-                      },
+                );
+              },
+              onSeeReviews: () {
+                Navigator.of(context).pop();
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => ReviewListPage(
+                      stationId: station.stationId,
+                      stationName: station.stationName,
                     ),
                   ),
-                ],
-              ),
-              const SizedBox(height: 8),
-            ],
-          ),
+                );
+              },
+            ),
+          ],
         );
       },
     );
