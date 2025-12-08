@@ -8,8 +8,9 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_naver_map/flutter_naver_map.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
-import 'cluster_options.dart';
+import 'package:supercluster/supercluster.dart';
 import 'map_controller.dart';
+import 'map_point.dart';
 import 'marker_builders.dart';
 import 'widgets/filter_bar.dart';
 import 'widgets/search_bar.dart';
@@ -160,6 +161,10 @@ class _MapScreenState extends State<MapScreen> {
   );
   NaverMapController? _controller;
   NOverlayImage? _clusterIcon;
+  SuperclusterMutable<MapPoint>? _clusterIndex;
+  Timer? _renderDebounceTimer;
+  bool _isRenderingClusters = false;
+  bool _queuedRender = false;
 
   // 검색창 컨트롤러
   final TextEditingController _searchController = TextEditingController();
@@ -218,6 +223,9 @@ class _MapScreenState extends State<MapScreen> {
   static const Color _h2MarkerBaseColor = Color(0xFF2563EB); // 파란색 톤
   static const Color _evMarkerBaseColor = Color(0xFF10B981); // 초록색 톤
   static const Color _parkingMarkerBaseColor = Color(0xFFF59E0B); // 주차장 주황
+  static const Color _clusterBaseColor = Color(0xFF111827); // 중성 짙은 슬레이트
+  static const double _clusterDisableZoom = 15;
+  static const int _clusterMinCountForClustering = 20; // 화면 내 포인트가 이 이하면 클러스터 해제
   static const List<String> _evApiTypes = ['ALL', 'CURRENT', 'OPERATION'];
   static const List<String> _h2ApiTypes = ['ALL', 'CURRENT', 'OPERATION'];
   static const List<String> _defaultH2Specs = ['700', '350'];
@@ -225,9 +233,6 @@ class _MapScreenState extends State<MapScreen> {
   static const List<String> _parkingCategoryOptions = ['공영', '민영'];
   static const List<String> _parkingTypeOptions = ['노상', '노외'];
   static const List<String> _parkingFeeTypeOptions = ['무료', '유료'];
-
-  /// 클러스터 옵션 (기본값)
-  NaverMapClusteringOptions get _clusterOptions => defaultClusterOptions;
 
   String? get _stationError => _mapController.stationError;
   List<DynamicIslandAction> _dynamicIslandActions = [];
@@ -287,6 +292,7 @@ class _MapScreenState extends State<MapScreen> {
     _controller = null;
     _searchController.dispose(); // 검색창 컨트롤러 정리
     _searchFocusNode.dispose();
+    _renderDebounceTimer?.cancel();
     _mapController.removeListener(_onMapControllerChanged);
     _mapController.dispose();
     super.dispose();
@@ -299,8 +305,22 @@ class _MapScreenState extends State<MapScreen> {
           width: 44,
           height: 44,
           decoration: const BoxDecoration(
-            color: _h2MarkerBaseColor,
+            color: _clusterBaseColor,
             shape: BoxShape.circle,
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black26,
+                blurRadius: 8,
+                offset: Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Container(
+            margin: const EdgeInsets.all(6),
+            decoration: BoxDecoration(
+              color: _clusterBaseColor.withOpacity(0.82),
+              shape: BoxShape.circle,
+            ),
           ),
         ),
         context: context,
@@ -315,7 +335,7 @@ class _MapScreenState extends State<MapScreen> {
   void _onMapControllerChanged() {
     // 데이터/필터 변경 시 UI와 마커를 갱신한다.
     if (_isMapLoaded && _controller != null) {
-      unawaited(_renderStationMarkers());
+      unawaited(_rebuildClusterIndex());
     }
     if (_isSearchFocused) {
       unawaited(_refreshDynamicIslandSuggestions());
@@ -348,11 +368,10 @@ class _MapScreenState extends State<MapScreen> {
                 locationButtonEnable: true,
                 contentPadding: EdgeInsets.only(bottom: mapBottomPadding),
               ),
-
-              /// ⭐ 클러스터 옵션 (플러그인 기본값 사용 — iOS/Android 동일 동작)
-              clusterOptions: _clusterOptions,
               onMapReady: _handleMapReady,
               onMapLoaded: _handleMapLoaded,
+              onCameraChange: _handleCameraChange,
+              onCameraIdle: _handleCameraIdle,
             ),
 
             /// 🔍 상단 검색창 + 자동완성 리스트
@@ -1559,12 +1578,20 @@ class _MapScreenState extends State<MapScreen> {
   /// 지도 준비 완료 후 컨트롤러를 보관하고 첫 렌더링을 수행한다.
   void _handleMapReady(NaverMapController controller) {
     _controller = controller;
-    unawaited(_renderStationMarkers());
+    unawaited(_rebuildClusterIndex());
   }
 
   void _handleMapLoaded() {
     _isMapLoaded = true;
-    unawaited(_renderStationMarkers());
+    unawaited(_rebuildClusterIndex());
+  }
+
+  void _handleCameraChange(NCameraUpdateReason reason, bool isAnimated) {
+    _scheduleRenderClusters();
+  }
+
+  void _handleCameraIdle() {
+    _scheduleRenderClusters(immediate: true);
   }
 
   Future<void> _loadStationsRespectingFilter({bool showSpinner = false}) async {
@@ -1582,7 +1609,7 @@ class _MapScreenState extends State<MapScreen> {
       setState(() => _isManualRefreshing = false);
     }
     if (_isMapLoaded && _controller != null) {
-      unawaited(_renderStationMarkers());
+      unawaited(_rebuildClusterIndex());
     }
   }
 
@@ -1678,58 +1705,198 @@ class _MapScreenState extends State<MapScreen> {
     }
   }
 
-  /// 지도에 표시할 모든 마커를 다시 생성하고 등록한다.
-  Future<void> _renderStationMarkers() async {
+  /// 데이터 필터링 상태에 맞춰 클러스터 인덱스를 다시 구축하고, 현재 뷰포트에 표시한다.
+  Future<void> _rebuildClusterIndex() async {
+    final points = _mapController.buildPoints();
+    final index = SuperclusterMutable<MapPoint>(
+      getX: (p) => p.lng,
+      getY: (p) => p.lat,
+      minZoom: 0,
+      maxZoom: 16,
+      radius: 60,
+    )..load(points);
+    _clusterIndex = index;
+
+    debugPrint('🎯 Rebuilt cluster index with ${points.length} points');
+    if (_isMapLoaded && mounted) {
+      _scheduleRenderClusters(immediate: true);
+    }
+  }
+
+  /// 카메라 이동 시 클러스터 렌더를 디바운스해 과도한 호출을 막는다.
+  void _scheduleRenderClusters({bool immediate = false}) {
+    if (_clusterIndex == null || !_isMapLoaded) return;
+
+    if (immediate) {
+      _renderDebounceTimer?.cancel();
+      unawaited(_renderVisibleClusters());
+      return;
+    }
+
+    _renderDebounceTimer?.cancel();
+    _renderDebounceTimer = Timer(const Duration(milliseconds: 80), () {
+      unawaited(_renderVisibleClusters());
+    });
+  }
+
+  Future<void> _renderVisibleClusters() async {
+    final controller = _controller;
+    final index = _clusterIndex;
+    if (controller == null || index == null) return;
+    if (_isRenderingClusters) {
+      _queuedRender = true;
+      return;
+    }
+
+    _isRenderingClusters = true;
+
+    NCameraPosition camera;
+    NLatLngBounds bounds;
+    try {
+      camera = await controller.getCameraPosition();
+      bounds = await controller.getContentBounds();
+    } catch (e) {
+      debugPrint('Camera/bounds fetch failed: $e');
+      return;
+    }
+
+    final double zoom = camera.zoom;
+    final points = _mapController.buildPoints();
+    final pointsInBounds =
+        points.where((p) => _isPointInBounds(p, bounds)).toList();
+
+    final bool disableCluster = zoom > _clusterDisableZoom ||
+        pointsInBounds.length <= _clusterMinCountForClustering;
+    final overlays = <NAddableOverlay>{};
+
+    if (disableCluster) {
+      // 고배율에서는 클러스터를 해제하고 개별 포인트만 표시.
+      for (final point in pointsInBounds) {
+        overlays.add(_buildPointMarker(point));
+      }
+    } else {
+      final int intZoom = zoom.round().clamp(index.minZoom, index.maxZoom);
+      final elements = index.search(
+        bounds.southWest.longitude,
+        bounds.southWest.latitude,
+        bounds.northEast.longitude,
+        bounds.northEast.latitude,
+        intZoom,
+      );
+
+      for (final element in elements) {
+        element.handle(
+          cluster: (cluster) {
+            overlays.add(
+              _buildClusterMarker(cluster, currentZoom: zoom),
+            );
+            return null;
+          },
+          point: (point) {
+            overlays.add(_buildPointMarker(point.originalPoint));
+            return null;
+          },
+        );
+      }
+    }
+
+    try {
+      await controller.clearOverlays(type: NOverlayType.marker);
+      if (overlays.isEmpty) return;
+      await controller.addOverlayAll(overlays);
+      if (Platform.isIOS) {
+        await controller.forceRefresh();
+      }
+      debugPrint(
+        '✅ Added ${overlays.length} markers (zoom ${camera.zoom.toStringAsFixed(1)})',
+      );
+    } catch (error) {
+      debugPrint('Marker overlay add failed: $error');
+    } finally {
+      _isRenderingClusters = false;
+      if (_queuedRender) {
+        _queuedRender = false;
+        unawaited(_renderVisibleClusters());
+      }
+    }
+  }
+
+  NMarker _buildPointMarker(MapPoint point) {
+    switch (point.type) {
+      case MapPointType.h2:
+        return buildH2Marker(
+          station: point.h2!,
+          tint: _h2MarkerBaseColor,
+          statusColor: _h2StatusColor,
+          onTap: _showH2StationPopup,
+        );
+      case MapPointType.ev:
+        return buildEvMarker(
+          station: point.ev!,
+          tint: _evMarkerBaseColor,
+          statusColor: _evStatusColor,
+          onTap: _showEvStationPopup,
+        );
+      case MapPointType.parking:
+        return buildParkingMarker(
+          lot: point.parking!,
+          tint: _parkingMarkerBaseColor,
+          onTap: _showParkingLotPopup,
+        );
+    }
+  }
+
+  NMarker _buildClusterMarker(
+    LayerCluster<MapPoint> cluster, {
+    double? currentZoom,
+  }) {
+    final count = cluster.childPointCount;
+    final marker = NMarker(
+      id: 'cluster_${cluster.uuid}',
+      position: NLatLng(cluster.latitude, cluster.longitude),
+      size: const Size(56, 56),
+      icon: _clusterIcon,
+      caption: NOverlayCaption(
+        text: '$count',
+        textSize: 13,
+        color: Colors.white,
+        haloColor: Colors.black.withOpacity(0.35),
+      ),
+      captionAligns: const [NAlign.center],
+      isHideCollidedSymbols: true,
+      isHideCollidedMarkers: true,
+    );
+    marker.setOnTapListener(
+      (_) => _zoomIntoCluster(cluster, currentZoom: currentZoom),
+    );
+    return marker;
+  }
+
+  bool _isPointInBounds(MapPoint point, NLatLngBounds bounds) {
+    return point.lat >= bounds.southWest.latitude &&
+        point.lat <= bounds.northEast.latitude &&
+        point.lng >= bounds.southWest.longitude &&
+        point.lng <= bounds.northEast.longitude;
+  }
+
+  Future<void> _zoomIntoCluster(
+    LayerCluster<MapPoint> cluster, {
+    double? currentZoom,
+  }) async {
     final controller = _controller;
     if (controller == null) return;
 
-    try {
-      // 🔥 클러스터러블 마커 타입으로 지워야 함
-      await controller.clearOverlays(type: NOverlayType.clusterableMarker);
-      // 또는 완전히 싹 다 지우고 싶으면:
-      // await controller.clearOverlays();
-    } catch (_) {
-      // 초기 로딩 동안은 컨트롤러 정리가 실패할 수 있으므로 무시한다.
-    }
+    double zoom = currentZoom ?? (await controller.getCameraPosition()).zoom;
+    zoom = (zoom + 1.5).clamp(0, 20);
 
-    final overlays = _mapController.buildMarkers(
-      h2Builder: (station) => buildH2Marker(
-        station: station,
-        tint: _h2MarkerBaseColor,
-        statusColor: _h2StatusColor,
-        onTap: _showH2StationPopup,
-      ),
-      evBuilder: (station) => buildEvMarker(
-        station: station,
-        tint: _evMarkerBaseColor,
-        statusColor: _evStatusColor,
-        onTap: _showEvStationPopup,
-      ),
-      parkingBuilder: (lot) => buildParkingMarker(
-        lot: lot,
-        tint: _parkingMarkerBaseColor,
-        onTap: _showParkingLotPopup,
+    await controller.updateCamera(
+      NCameraUpdate.fromCameraPosition(
+        NCameraPosition(
+          target: NLatLng(cluster.latitude, cluster.longitude),
+          zoom: zoom,
+        ),
       ),
     );
-
-    debugPrint(
-      '🎯 Render markers (filtered): '
-          'H2=${_mapController.showH2 ? _mapController.h2StationsWithCoords.length : 0}, '
-          'EV=${_mapController.showEv ? _mapController.evStationsWithCoords.length : 0}, '
-          'P=${_mapController.showParking ? _mapController.parkingLotsWithCoords.length : 0}',
-    );
-
-    if (overlays.isEmpty) return;
-    try {
-      await controller.addOverlayAll(overlays);
-      if (Platform.isIOS) {
-        // iOS에서 클러스터 마커가 갱신되지 않는 경우가 있어 강제 새로고침.
-        await controller.forceRefresh();
-      }
-      debugPrint('✅ Added ${overlays.length} clusterable markers');
-    } catch (error) {
-      debugPrint('Marker overlay add failed: $error');
-    }
   }
 
   Future<void> _refreshStations() async {
