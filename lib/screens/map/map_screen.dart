@@ -8,6 +8,8 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_naver_map/flutter_naver_map.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
+import 'package:kakao_flutter_sdk_user/kakao_flutter_sdk_user.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'cluster_options.dart';
 import 'map_controller.dart';
 import 'marker_builders.dart';
@@ -229,6 +231,7 @@ class _MapScreenState extends State<MapScreen> {
   static const List<String> _parkingCategoryOptions = ['공영', '민영'];
   static const List<String> _parkingTypeOptions = ['노상', '노외'];
   static const List<String> _parkingFeeTypeOptions = ['무료', '유료'];
+  bool _isPaying = false;
 
   /// 클러스터 옵션 (기본값)
   NaverMapClusteringOptions get _clusterOptions => defaultClusterOptions;
@@ -2203,6 +2206,16 @@ class _MapScreenState extends State<MapScreen> {
               label: '대기 차량',
               value: '$waiting대',
             ),
+            if (_hasH2Price(station)) ...[
+              const SizedBox(height: 12),
+              FilledButton.icon(
+                icon: const Icon(Icons.payment),
+                label: const Text('결제/예약'),
+                onPressed: _isPaying
+                    ? null
+                    : () => _startH2Payment(context, station),
+              ),
+            ],
             const SizedBox(height: 16),
             _buildPopupActions(
               accentColor: _h2MarkerBaseColor,
@@ -2296,6 +2309,16 @@ class _MapScreenState extends State<MapScreen> {
               label: '요금',
               value: feeSummary,
             ),
+            if (_hasParkingPrice(lot)) ...[
+              const SizedBox(height: 12),
+              FilledButton.icon(
+                icon: const Icon(Icons.payment),
+                label: const Text('결제/예약'),
+                onPressed: _isPaying
+                    ? null
+                    : () => _startParkingPayment(context, lot),
+              ),
+            ],
             _buildPopupInfoRow(
               icon: Icons.local_activity_rounded,
               label: '총 주차면수',
@@ -2409,6 +2432,16 @@ class _MapScreenState extends State<MapScreen> {
               label: '층/구역',
               value: '${station.floor ?? '-'} / ${station.floorType ?? '-'}',
             ),
+            if (_hasEvPrice(station)) ...[
+              const SizedBox(height: 12),
+              FilledButton.icon(
+                icon: const Icon(Icons.payment),
+                label: const Text('결제/예약'),
+                onPressed: _isPaying
+                    ? null
+                    : () => _startEvPayment(context, station),
+              ),
+            ],
             const SizedBox(height: 16),
             _buildPopupActions(
               accentColor: _evMarkerBaseColor,
@@ -2439,6 +2472,198 @@ class _MapScreenState extends State<MapScreen> {
         );
       },
     );
+  }
+
+  bool _hasEvPrice(EVStation station) =>
+      (station.pricePerKwh ?? 0) > 0;
+
+  bool _hasH2Price(H2Station station) => (station.price ?? 0) > 0;
+
+  bool _hasParkingPrice(ParkingLot lot) {
+    if (lot.isFree == true) return true;
+    // 구조화된 요금 정보가 있을 때만 결제 버튼 노출
+    final hasBase = lot.baseFee != null && lot.baseTimeMinutes != null;
+    return hasBase;
+  }
+
+  Future<double?> _promptQuantity({
+    required String title,
+    required String unit,
+    String? hint,
+  }) async {
+    final controller = TextEditingController();
+    return showDialog<double>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(title),
+        content: TextField(
+          controller: controller,
+          keyboardType:
+              const TextInputType.numberWithOptions(decimal: true, signed: false),
+          decoration: InputDecoration(
+            labelText: '수량 ($unit)',
+            hintText: hint,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('취소'),
+          ),
+          TextButton(
+            onPressed: () {
+              final raw = controller.text.trim();
+              final value = double.tryParse(raw);
+              Navigator.of(ctx).pop(value);
+            },
+            child: const Text('확인'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _startEvPayment(BuildContext context, EVStation station) async {
+    final price = station.pricePerKwh;
+    if (price == null || price <= 0) {
+      _showSnack('요금 정보가 없습니다.');
+      return;
+    }
+    final qty = await _promptQuantity(
+      title: '충전량 입력',
+      unit: 'kWh',
+      hint: '예) 10',
+    );
+    if (qty == null || qty <= 0) return;
+    final amount = (price * qty).ceil();
+    if (amount <= 0) {
+      _showSnack('결제 금액을 계산할 수 없습니다.');
+      return;
+    }
+    await _startPayment(
+      itemName: '${station.stationName} ${qty.toStringAsFixed(1)}kWh',
+      amount: amount,
+    );
+  }
+
+  Future<void> _startH2Payment(BuildContext context, H2Station station) async {
+    final price = station.price;
+    if (price == null || price <= 0) {
+      _showSnack('수소 가격 정보가 없습니다.');
+      return;
+    }
+    final qty = await _promptQuantity(
+      title: '충전량 입력',
+      unit: 'kg',
+      hint: '예) 5',
+    );
+    if (qty == null || qty <= 0) return;
+    final amount = (price * qty).ceil();
+    if (amount <= 0) {
+      _showSnack('결제 금액을 계산할 수 없습니다.');
+      return;
+    }
+    await _startPayment(
+      itemName: '${station.stationName} ${qty.toStringAsFixed(1)}kg',
+      amount: amount,
+    );
+  }
+
+  int? _calculateParkingFee(ParkingLot lot, int minutes) {
+    if (lot.isFree == true) return 0;
+    if (lot.baseTimeMinutes == null || lot.baseFee == null) return null;
+    var total = lot.baseFee!;
+    final remaining = minutes - lot.baseTimeMinutes!;
+    if (remaining > 0 && lot.addTimeMinutes != null && lot.addFee != null) {
+      final blocks =
+          (remaining / lot.addTimeMinutes!).ceil();
+      total += blocks * lot.addFee!;
+    }
+    if (lot.dailyMaxFee != null) {
+      total = total > lot.dailyMaxFee! ? lot.dailyMaxFee! : total;
+    }
+    return total;
+  }
+
+  Future<void> _startParkingPayment(
+      BuildContext context, ParkingLot lot) async {
+    final hasPrice = _hasParkingPrice(lot);
+    if (!hasPrice) {
+      _showSnack('요금 정보가 없습니다.');
+      return;
+    }
+    final minutesRaw = await _promptQuantity(
+      title: '예상 주차 시간',
+      unit: '분',
+      hint: '예) 60',
+    );
+    if (minutesRaw == null || minutesRaw <= 0) return;
+    final minutes = minutesRaw.ceil();
+    final amount = _calculateParkingFee(lot, minutes);
+    if (amount == null || amount < 0) {
+      _showSnack('주차 요금을 계산할 수 없습니다.');
+      return;
+    }
+    await _startPayment(
+      itemName: '${lot.name} ${minutes}분',
+      amount: amount,
+    );
+  }
+
+  Future<void> _startPayment({
+    required String itemName,
+    required int amount,
+  }) async {
+    if (_isPaying) return;
+    setState(() => _isPaying = true);
+    try {
+      final token = await TokenStorage.getAccessToken();
+      String? userId;
+      try {
+        final user = await UserApi.instance.me();
+        userId = user.id?.toString();
+      } catch (_) {
+        userId = null;
+      }
+      if (userId == null || userId.isEmpty) {
+        _showSnack('로그인 후 결제할 수 있습니다.');
+        return;
+      }
+
+      final orderId =
+          'ORDER-${DateTime.now().millisecondsSinceEpoch.toString()}';
+      final uri = Uri.parse('$_backendBaseUrl/api/payments/kakao/ready');
+      final body = jsonEncode({
+        'orderId': orderId,
+        'userId': userId,
+        'itemName': itemName,
+        'quantity': 1,
+        'totalAmount': amount,
+        'taxFreeAmount': 0,
+      });
+      final headers = {
+        'Content-Type': 'application/json',
+        if (token != null && token.isNotEmpty) 'Authorization': 'Bearer $token',
+      };
+      final res = await http.post(uri, headers: headers, body: body);
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body) as Map<String, dynamic>;
+        final redirect =
+            data['next_redirect_mobile_url'] ?? data['nextRedirectMobileUrl'];
+        if (redirect is String && redirect.isNotEmpty) {
+          final launchUri = Uri.parse(redirect);
+          await launchUrl(launchUri, mode: LaunchMode.externalApplication);
+        } else {
+          _showSnack('결제 리다이렉트 주소를 찾을 수 없습니다.');
+        }
+      } else {
+        _showSnack('결제 준비 실패 (${res.statusCode})');
+      }
+    } catch (e) {
+      _showSnack('결제 처리 중 오류가 발생했습니다: $e');
+    } finally {
+      if (mounted) setState(() => _isPaying = false);
+    }
   }
 
   // --- 즐겨찾기 관련 ---
