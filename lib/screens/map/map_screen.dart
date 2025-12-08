@@ -13,7 +13,6 @@ import 'package:url_launcher/url_launcher.dart';
 import 'cluster_options.dart';
 import 'map_controller.dart';
 import 'marker_builders.dart';
-import 'payment_models.dart';
 import 'widgets/filter_bar.dart';
 import 'widgets/search_bar.dart';
 
@@ -85,6 +84,13 @@ class _NearbyFilterResult {
   final String? parkingCategory;
   final String? parkingType;
   final String? parkingFeeType;
+}
+
+class ParkingReservation {
+  final DateTime start;
+  final DateTime end;
+  const ParkingReservation({required this.start, required this.end});
+  int get hours => end.difference(start).inHours;
 }
 
 /// ✅ 이 파일 단독 실행용 엔트리 포인트
@@ -2679,10 +2685,13 @@ class _MapScreenState extends State<MapScreen> {
     if (lot.baseTimeMinutes == null || lot.baseFee == null) return null;
     var total = lot.baseFee!;
     final remaining = minutes - lot.baseTimeMinutes!;
-    if (remaining > 0 && lot.addTimeMinutes != null && lot.addFee != null) {
-      final blocks =
-          (remaining / lot.addTimeMinutes!).ceil();
-      total += blocks * lot.addFee!;
+    // 추가 요금 정보가 없으면 기본 요금/시간 단위를 반복 사용한다.
+    final unitTime = lot.addTimeMinutes ?? lot.baseTimeMinutes;
+    final unitFee = lot.addFee ?? lot.baseFee;
+
+    if (remaining > 0 && unitTime != null && unitFee != null) {
+      final blocks = (remaining / unitTime).ceil();
+      total += blocks * unitFee;
     }
     if (lot.dailyMaxFee != null) {
       total = total > lot.dailyMaxFee! ? lot.dailyMaxFee! : total;
@@ -2695,6 +2704,12 @@ class _MapScreenState extends State<MapScreen> {
     return '${date.year}-${two(date.month)}-${two(date.day)}';
   }
 
+  String _formatTimeRange(DateTime start, DateTime end) {
+    String two(int v) => v.toString().padLeft(2, '0');
+    String hhmm(DateTime dt) => '${two(dt.hour)}:${two(dt.minute)}';
+    return '${hhmm(start)} ~ ${hhmm(end)}';
+  }
+
   Future<ParkingReservation?> _pickParkingReservation() async {
     final today = DateTime.now();
     final date = await showDatePicker(
@@ -2705,23 +2720,32 @@ class _MapScreenState extends State<MapScreen> {
     );
     if (date == null) return null;
 
-    final options = [2, 4, 6, 8, 10, 12];
-    final hours = await showDialog<int>(
+    final slots = List<ParkingReservation>.generate(12, (i) {
+      final start = DateTime(date.year, date.month, date.day, i * 2, 0);
+      final end = start.add(const Duration(hours: 2));
+      return ParkingReservation(start: start, end: end);
+    });
+
+    final selectedIndex = await showDialog<int>(
       context: context,
       builder: (ctx) => SimpleDialog(
         title: const Text('이용 시간을 선택하세요 (2시간 단위)'),
-        children: options
-            .map(
-              (h) => SimpleDialogOption(
-                onPressed: () => Navigator.of(ctx).pop(h),
-                child: Text('$h시간'),
-              ),
-            )
-            .toList(),
+        children: slots
+                .asMap()
+                .entries
+                .map(
+                  (entry) => SimpleDialogOption(
+                    onPressed: () => Navigator.of(ctx).pop(entry.key),
+                    child: Text(
+                      '${_formatTimeRange(entry.value.start, entry.value.end)} (2시간)',
+                    ),
+                  ),
+                )
+                .toList(),
       ),
     );
-    if (hours == null) return null;
-    return ParkingReservation(date: date, hours: hours);
+    if (selectedIndex == null) return null;
+    return slots[selectedIndex];
   }
 
   Future<void> _startParkingPayment(
@@ -2733,14 +2757,15 @@ class _MapScreenState extends State<MapScreen> {
     }
     final reservation = await _pickParkingReservation();
     if (reservation == null) return;
-    final minutes = reservation.hours * 60;
+    final minutes =
+        reservation.end.difference(reservation.start).inMinutes;
     final amount = _calculateParkingFee(lot, minutes);
     if (amount == null || amount < 0) {
       _showSnack('주차 요금을 계산할 수 없습니다.');
       return;
     }
     final detail =
-        '${_formatDate(reservation.date)} · ${reservation.hours}시간 이용 (2시간 단위)';
+        '${_formatDate(reservation.start)} · ${_formatTimeRange(reservation.start, reservation.end)} (2시간)';
     final confirmed = await _showPaymentConfirm(
       title: '결제/예약',
       amountLabel: '${_formatCurrency(amount)}원',
@@ -2748,7 +2773,8 @@ class _MapScreenState extends State<MapScreen> {
     );
     if (!confirmed) return;
     await _startPayment(
-      itemName: '${lot.name} ${reservation.hours}시간 (${_formatDate(reservation.date)})',
+      itemName:
+          '${lot.name} ${_formatTimeRange(reservation.start, reservation.end)} (${_formatDate(reservation.start)})',
       amount: amount,
     );
   }
