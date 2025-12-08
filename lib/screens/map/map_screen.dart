@@ -1553,12 +1553,24 @@ class _MapScreenState extends State<MapScreen> {
   String _formatParkingSpaces(ParkingLot lot) {
     final hasAvailable = lot.availableSpaces != null;
     final hasTotal = lot.totalSpaces != null;
+    final occupied = lot.occupiedSpaces;
     if (hasAvailable || hasTotal) {
       final available = hasAvailable ? lot.availableSpaces.toString() : '-';
       final total = hasTotal ? lot.totalSpaces.toString() : '-';
       return '$available / $total';
     }
+    if (occupied != null) {
+      return '사용 $occupied면';
+    }
     return '정보 없음';
+  }
+
+  String _formatH2Price(H2Station station) {
+    return station.priceLabel ?? '정보 없음';
+  }
+
+  String _formatEvPrice(EVStation station) {
+    return station.priceLabel ?? '정보 없음';
   }
 
   // --- 지도 / 마커 관련 ---
@@ -2170,6 +2182,11 @@ class _MapScreenState extends State<MapScreen> {
               valueColor: statusColor,
             ),
             _buildPopupInfoRow(
+              icon: Icons.payments_outlined,
+              label: '수소 가격',
+              value: _formatH2Price(station),
+            ),
+            _buildPopupInfoRow(
               icon: Icons.timer_rounded,
               label: '최종 갱신',
               value: station.lastModifiedAt ?? '정보 없음',
@@ -2229,6 +2246,12 @@ class _MapScreenState extends State<MapScreen> {
       subtitle: '주차장 정보',
       contentBuilder: (_) {
         final availability = _formatParkingSpaces(lot);
+        final feeSummary = lot.feeSummary ?? '요금 정보 없음';
+        final feeTypeLabel = lot.feeTypeLabel;
+        final classification = [
+          if (lot.category != null && lot.category!.isNotEmpty) lot.category!,
+          if (lot.type != null && lot.type!.isNotEmpty) lot.type!,
+        ].join(' · ');
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
@@ -2243,11 +2266,17 @@ class _MapScreenState extends State<MapScreen> {
                   color: Colors.orange.shade50,
                   textColor: Colors.deepOrange,
                 ),
-                if (lot.feeInfo != null && lot.feeInfo!.isNotEmpty)
+                if (feeTypeLabel != null)
                   _buildPopupChip(
-                    lot.feeInfo!,
-                    icon: Icons.payments_rounded,
+                    feeTypeLabel,
+                    icon: Icons.local_parking_rounded,
                     color: Colors.blueGrey.shade50,
+                  ),
+                if (classification.isNotEmpty)
+                  _buildPopupChip(
+                    classification,
+                    icon: Icons.layers_rounded,
+                    color: Colors.grey.shade100,
                   ),
               ],
             ),
@@ -2261,6 +2290,11 @@ class _MapScreenState extends State<MapScreen> {
               icon: Icons.call_rounded,
               label: '문의',
               value: lot.tel?.isNotEmpty == true ? lot.tel! : '연락처 정보 없음',
+            ),
+            _buildPopupInfoRow(
+              icon: Icons.payments_rounded,
+              label: '요금',
+              value: feeSummary,
             ),
             _buildPopupInfoRow(
               icon: Icons.local_activity_rounded,
@@ -2354,6 +2388,11 @@ class _MapScreenState extends State<MapScreen> {
               label: '충전 방식',
               value: '${station.statusLabel} (${station.status})',
               valueColor: statusColor,
+            ),
+            _buildPopupInfoRow(
+              icon: Icons.payments_outlined,
+              label: '충전 단가',
+              value: _formatEvPrice(station),
             ),
             _buildPopupInfoRow(
               icon: Icons.timer_outlined,

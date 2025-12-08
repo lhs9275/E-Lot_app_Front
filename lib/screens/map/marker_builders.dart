@@ -99,7 +99,9 @@ NClusterableMarker buildParkingMarker({
           ? '잔여 ${lot.availableSpaces}/${lot.totalSpaces}'
           : (lot.availableSpaces != null
               ? '잔여 ${lot.availableSpaces}'
-              : '주차장'),
+              : (lot.totalSpaces != null
+                  ? '총 ${lot.totalSpaces}면'
+                  : '주차장')),
       textSize: 11,
       color: Colors.deepOrange,
       haloColor: Colors.white,

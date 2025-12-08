@@ -37,6 +37,8 @@ class EVStation {
   final String? subRegionCode;
   final String? chargerId;
   final String? chargerType;
+  final int? pricePerKwh; // 단가 (원/kWh)
+  final String? priceText;
 
   EVStation({
     required this.stationId,
@@ -77,6 +79,8 @@ class EVStation {
     this.subRegionCode,
     this.chargerId,
     this.chargerType,
+    this.pricePerKwh,
+    this.priceText,
   });
 
   factory EVStation.fromJson(Map<String, dynamic> json) {
@@ -119,6 +123,21 @@ class EVStation {
       subRegionCode: _parseString(json['subRegionCode']),
       chargerId: _parseString(json['chargerId']),
       chargerType: _parseString(json['chargerType']),
+      pricePerKwh: _parseInt(
+        json['price'] ??
+            json['pricePerKwh'] ??
+            json['unitPrice'] ??
+            json['fee'] ??
+            json['chargingPrice'] ??
+            json['kwhPrice'],
+      ),
+      priceText: _parseString(
+        json['priceText'] ??
+            json['price_text'] ??
+            json['priceDesc'] ??
+            json['price_desc'] ??
+            json['feeInfo'],
+      ),
     );
   }
 
@@ -158,5 +177,25 @@ class EVStation {
     final parsed = _parseString(raw);
     if (parsed == null || parsed.isEmpty) return fallback;
     return parsed;
+  }
+
+  String? get priceLabel {
+    if (priceText != null && priceText!.trim().isNotEmpty) {
+      return priceText!.trim();
+    }
+    if (pricePerKwh != null) {
+      return '${_formatCurrency(pricePerKwh!)} / kWh';
+    }
+    return null;
+  }
+
+  static String _formatCurrency(int amount) {
+    final raw = amount.toString();
+    final buffer = StringBuffer();
+    for (var i = 0; i < raw.length; i++) {
+      if (i > 0 && (raw.length - i) % 3 == 0) buffer.write(',');
+      buffer.write(raw[i]);
+    }
+    return '${buffer.toString()}원';
   }
 }
