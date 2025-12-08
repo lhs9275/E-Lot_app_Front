@@ -37,10 +37,12 @@
 	<key>UISupportedInterfaceOrientations~ipad</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>
-		<string>UIInterfaceOrientationPortraitUpsideDown</string>
-		<string>UIInterfaceOrientationLandscapeLeft</string>
-		<string>UIInterfaceOrientationLandscapeRight</string>
+	<string>UIInterfaceOrientationPortraitUpsideDown</string>
+	<string>UIInterfaceOrientationLandscapeLeft</string>
+	<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<key>NMFClientId</key>
+    <string>hoivm494r9</string>
 	<!-- Kakao OAuth redirect -->
 	<key>CFBundleURLTypes</key>
 	<array>
@@ -50,6 +52,14 @@
 			<key>CFBundleURLSchemes</key>
 			<array>
 				<string>kakaod480d92012b558a0f40dbebbf3a17519</string>
+			</array>
+		</dict>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>naverhoivm494r9</string>
 			</array>
 		</dict>
 	</array>
