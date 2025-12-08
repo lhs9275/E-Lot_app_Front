@@ -179,7 +179,7 @@ class _ReviewListPageState extends State<ReviewListPage> {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
-                                    r.authorName,
+                                    r.maskedAuthorName,
                                     style: txt.bodyMedium?.copyWith(
                                       fontWeight: FontWeight.w700,
                                     ),
@@ -247,6 +247,22 @@ class _ReviewItem {
   final int rating;
   final String content;
   final String? createdAt;
+
+  String get maskedAuthorName {
+    final trimmed = authorName.trim();
+    if (trimmed.isEmpty) return '익명';
+
+    final runes = trimmed.runes.toList();
+    final len = runes.length;
+    if (len == 1) return '*';
+    if (len == 2) {
+      return '${String.fromCharCode(runes.first)}*';
+    }
+    final first = String.fromCharCode(runes.first);
+    final last = String.fromCharCode(runes.last);
+    final middle = List.filled(len - 2, '*').join();
+    return '$first$middle$last';
+  }
 
   factory _ReviewItem.fromJson(Map<String, dynamic> json) {
     final idRaw = json['id'] ?? json['reviewId'] ?? 0;
