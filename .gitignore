@@ -13,6 +13,7 @@
 build/
 coverage/
 .flutter-plugins-dependencies
+devtools_options.yaml
 
 # Generated (자동 생성 파일)
 **/GeneratedPluginRegistrant.*
