@@ -6,9 +6,9 @@ import '../../models/h2_station.dart';
 import '../../models/parking_lot.dart';
 
 final NOverlayImage _h2MarkerIcon =
-NOverlayImage.fromAssetImage('lib/assets/icons/markers/ev_pin.png');
-final NOverlayImage _evMarkerIcon =
 NOverlayImage.fromAssetImage('lib/assets/icons/markers/h2_pin.png');
+final NOverlayImage _evMarkerIcon =
+NOverlayImage.fromAssetImage('lib/assets/icons/markers/ev_pin.png');
 final NOverlayImage _parkingMarkerIcon =
 NOverlayImage.fromAssetImage('lib/assets/icons/markers/parking_pin.png');
 
