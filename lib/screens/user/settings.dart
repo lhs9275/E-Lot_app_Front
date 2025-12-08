@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:kakao_flutter_sdk_user/kakao_flutter_sdk_user.dart';
+import 'package:geolocator/geolocator.dart';
 
 import 'package:psp2_fn/auth/auth_api.dart' as clos_auth;
 import 'package:psp2_fn/auth/token_storage.dart';
@@ -87,6 +88,52 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
+  Future<void> _handleLocationGuide() async {
+    try {
+      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('위치 서비스가 꺼져 있습니다. 설정으로 이동합니다.')),
+          );
+        }
+        await Geolocator.openLocationSettings();
+        return;
+      }
+
+      var permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+
+      if (permission == LocationPermission.deniedForever ||
+          permission == LocationPermission.denied) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('위치 권한이 필요합니다. 설정으로 이동합니다.')),
+          );
+        }
+        await Geolocator.openAppSettings();
+        return;
+      }
+
+      if (permission == LocationPermission.always ||
+          permission == LocationPermission.whileInUse) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('이미 위치 권한이 허용되어 있습니다.')),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('위치 권한 확인 중 오류가 발생했습니다: $e')),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
@@ -123,13 +170,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 iconColor: Colors.indigo,
                 title: '위치 접근 안내',
                 subtitle: '기기 설정 > 위치 권한을 허용해 주세요.',
-                onTap: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('설정 > 위치 접근 권한을 확인해주세요.'),
-                    ),
-                  );
-                },
+                onTap: _handleLocationGuide,
               ),
             ],
           ),
@@ -137,17 +178,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
           _Section(
             title: '도움말',
             children: [
-              _RowTile(
-                icon: Icons.help_outline,
-                iconColor: Colors.teal,
-                title: 'FAQ / 문의',
-                subtitle: '문의 및 자주 묻는 질문을 준비 중입니다.',
-                onTap: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('FAQ는 준비 중입니다.')),
-                  );
-                },
-              ),
               _RowTile(
                 icon: Icons.info_outline,
                 iconColor: Colors.grey,
