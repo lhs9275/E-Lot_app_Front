@@ -6,6 +6,8 @@ class H2Station {
   final int? waitingCount;     // 대기 차량 수 (nullable)
   final int? maxChargeCount;   // 최대 충전 가능 대수 (nullable)
   final String? lastModifiedAt; // 최종 갱신 시간
+  final int? price;            // 단가 (원/kg)
+  final String? priceText;     // 가공된 단가 문자열이 있으면 사용
   final double? latitude;      // 위도
   final double? longitude;     // 경도
 
@@ -16,6 +18,8 @@ class H2Station {
     this.waitingCount,
     this.maxChargeCount,
     this.lastModifiedAt,
+    this.price,
+    this.priceText,
     this.latitude,
     this.longitude,
   });
@@ -45,6 +49,21 @@ class H2Station {
       ),
       lastModifiedAt: _parseString(
         realtime?['lastModifiedAt'] ?? json['lastModifiedAt'],
+      ),
+      price: _parseInt(
+        realtime?['price'] ??
+            operation?['price'] ??
+            json['price'] ??
+            json['pricePerKg'] ??
+            json['price_per_kg'] ??
+            json['unitPrice'],
+      ),
+      priceText: _parseString(
+        realtime?['priceText'] ??
+            json['priceText'] ??
+            json['price_text'] ??
+            json['priceDesc'] ??
+            json['price_desc'],
       ),
       latitude: _parseDouble(
         operation?['latitude'] ?? json['latitude'] ?? json['lat'],
@@ -85,5 +104,25 @@ class H2Station {
   static Map<String, dynamic>? _parseMap(dynamic raw) {
     if (raw is Map<String, dynamic>) return raw;
     return null;
+  }
+
+  String? get priceLabel {
+    if (priceText != null && priceText!.trim().isNotEmpty) {
+      return priceText!.trim();
+    }
+    if (price != null) {
+      return '${_formatCurrency(price!)} / kg';
+    }
+    return null;
+  }
+
+  static String _formatCurrency(int amount) {
+    final raw = amount.toString();
+    final buffer = StringBuffer();
+    for (var i = 0; i < raw.length; i++) {
+      if (i > 0 && (raw.length - i) % 3 == 0) buffer.write(',');
+      buffer.write(raw[i]);
+    }
+    return '${buffer.toString()}원';
   }
 }
