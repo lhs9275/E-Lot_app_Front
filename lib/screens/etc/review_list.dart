@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:http/http.dart' as http;
 import 'package:psp2_fn/auth/token_storage.dart';
+import 'package:kakao_flutter_sdk_user/kakao_flutter_sdk_user.dart';
 
 import 'report.dart';
 import 'review.dart';
@@ -26,11 +27,26 @@ class _ReviewListPageState extends State<ReviewListPage> {
   bool _loading = true;
   String? _error;
   List<_ReviewItem> _reviews = [];
+  String? _kakaoNick;
 
   @override
   void initState() {
     super.initState();
+    _loadKakaoName();
     _fetchReviews();
+  }
+
+  Future<void> _loadKakaoName() async {
+    try {
+      final user = await UserApi.instance.me();
+      final nick = user.kakaoAccount?.profile?.nickname;
+      if (!mounted) return;
+      if (nick != null && nick.isNotEmpty) {
+        setState(() => _kakaoNick = nick);
+      }
+    } catch (_) {
+      // ignore
+    }
   }
 
   Future<void> _fetchReviews() async {
@@ -179,7 +195,7 @@ class _ReviewListPageState extends State<ReviewListPage> {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
-                                    r.maskedAuthorName,
+                                    r.maskedAuthorName(fallbackName: _kakaoNick),
                                     style: txt.bodyMedium?.copyWith(
                                       fontWeight: FontWeight.w700,
                                     ),
@@ -248,11 +264,16 @@ class _ReviewItem {
   final String content;
   final String? createdAt;
 
-  String get maskedAuthorName {
-    final trimmed = authorName.trim();
-    if (trimmed.isEmpty) return '익명';
+  String maskedAuthorName({String? fallbackName}) {
+    final normalized = _stripEmailDomain(authorName).trim();
+    final effective = _shouldUseFallback(normalized) &&
+            fallbackName != null &&
+            fallbackName.trim().isNotEmpty
+        ? fallbackName.trim()
+        : normalized;
+    if (effective.isEmpty) return '익명';
 
-    final runes = trimmed.runes.toList();
+    final runes = effective.runes.toList();
     final len = runes.length;
     if (len == 1) return '*';
     if (len == 2) {
@@ -264,19 +285,24 @@ class _ReviewItem {
     return '$first$middle$last';
   }
 
+  String _stripEmailDomain(String raw) {
+    final at = raw.indexOf('@');
+    if (at <= 0) return raw;
+    return raw.substring(0, at);
+  }
+
+  bool _shouldUseFallback(String raw) {
+    if (raw.isEmpty) return true;
+    if (raw.contains('@')) return true;
+    return false;
+  }
+
   factory _ReviewItem.fromJson(Map<String, dynamic> json) {
     final idRaw = json['id'] ?? json['reviewId'] ?? 0;
     final ratingRaw = json['rating'] ?? json['score'] ?? 0;
     final contentRaw =
         json['content'] ?? json['text'] ?? json['comment'] ?? '내용이 없습니다.';
-    final authorRaw =
-        json['authorName'] ??
-        json['writerName'] ??
-        json['writerEmail'] ??
-        json['writer'] ??
-        json['nickname'] ??
-        json['userName'] ??
-        '익명';
+    final authorRaw = _pickAuthorName(json);
     final createdRaw =
         json['createdAt'] ??
         json['createdDate'] ??
@@ -292,6 +318,64 @@ class _ReviewItem {
       content: contentRaw.toString(),
       createdAt: createdRaw?.toString(),
     );
+  }
+
+  static String _pickAuthorName(Map<String, dynamic> json) {
+    String? emailFallback;
+
+    String? pickFromMap(Map<String, dynamic>? map) {
+      if (map == null) return null;
+      final nameKeys = [
+        'name',
+        'realName',
+        'userRealName',
+        'displayName',
+        'userDisplayName',
+        'authorName',
+        'writerName',
+        'nickname',
+        'nickName',
+        'userName',
+      ];
+      for (final key in nameKeys) {
+        final value = _stringOrNull(map[key]);
+        if (value == null) continue;
+        if (value.contains('@')) {
+          emailFallback ??= value;
+          continue;
+        }
+        return value;
+      }
+      final emailKeys = ['writerEmail', 'email'];
+      for (final key in emailKeys) {
+        final value = _stringOrNull(map[key]);
+        if (value == null) continue;
+        emailFallback ??= value;
+      }
+      return null;
+    }
+
+    final mapsToCheck = <Map<String, dynamic>?>[
+      json,
+      json['writer'] is Map<String, dynamic> ? json['writer'] as Map<String, dynamic> : null,
+      json['author'] is Map<String, dynamic> ? json['author'] as Map<String, dynamic> : null,
+      json['user'] is Map<String, dynamic> ? json['user'] as Map<String, dynamic> : null,
+      json['member'] is Map<String, dynamic> ? json['member'] as Map<String, dynamic> : null,
+    ];
+
+    for (final map in mapsToCheck) {
+      final picked = pickFromMap(map);
+      if (picked != null) return picked;
+    }
+
+    return emailFallback ?? '익명';
+  }
+
+  static String? _stringOrNull(dynamic raw) {
+    if (raw == null) return null;
+    final s = raw.toString().trim();
+    if (s.isEmpty) return null;
+    return s;
   }
 }
 
