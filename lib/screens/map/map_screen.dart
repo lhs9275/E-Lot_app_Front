@@ -345,6 +345,7 @@ class _MapScreenState extends State<MapScreen> {
     }
   }
 
+
   void _onMapControllerChanged() {
     // 데이터/필터 변경 시 UI와 마커를 갱신한다.
     if (_isMapLoaded && _controller != null) {
@@ -562,9 +563,15 @@ class _MapScreenState extends State<MapScreen> {
                     bottom: MediaQuery.of(context).viewInsets.bottom + 16,
                     top: 8,
                   ),
-                  child: ListView(
-                    controller: scrollController,
-                    children: [
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF8F8FA),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: ListView(
+                      controller: scrollController,
+                      padding: const EdgeInsets.all(12),
+                      children: [
                       Row(
                         children: [
                           Text(
@@ -1024,6 +1031,7 @@ class _MapScreenState extends State<MapScreen> {
                       ),
                     ],
                   ),
+                ),
                 );
               },
             );
