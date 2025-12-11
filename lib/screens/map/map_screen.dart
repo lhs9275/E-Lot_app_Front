@@ -8,7 +8,9 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_naver_map/flutter_naver_map.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
+import 'package:kakao_flutter_sdk_user/kakao_flutter_sdk_user.dart';
 import 'package:supercluster/supercluster.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'map_controller.dart';
 import 'map_point.dart';
 import 'marker_builders.dart';
@@ -25,6 +27,7 @@ import '../../services/parking_lot_api_service.dart';
 import '../bottom_navbar.dart'; // ✅ 공통 하단 네비게이션 바
 import '../etc/review.dart'; // ⭐ 리뷰 작성 페이지
 import 'package:psp2_fn/auth/token_storage.dart'; // 🔑 JWT 저장소
+import 'package:psp2_fn/auth/auth_api.dart' as clos_auth;
 
 /// 🔍 검색용 후보 모델
 class _SearchCandidate {
@@ -83,6 +86,13 @@ class _NearbyFilterResult {
   final String? parkingCategory;
   final String? parkingType;
   final String? parkingFeeType;
+}
+
+class ParkingReservation {
+  final DateTime start;
+  final DateTime end;
+  const ParkingReservation({required this.start, required this.end});
+  int get hours => end.difference(start).inHours;
 }
 
 /// ✅ 이 파일 단독 실행용 엔트리 포인트
@@ -211,6 +221,11 @@ class _MapScreenState extends State<MapScreen> {
 
   /// ⭐ 백엔드 주소 (clos21)
   static const String _backendBaseUrl = 'https://clos21.kr';
+  static const String _appRedirectScheme = 'psp2fn';
+  /// KakaoPay는 http/https 리다이렉트만 허용하므로, 서버에 브릿지 페이지를 두고
+  /// 거기서 앱 스킴으로 다시 넘겨준다.
+  static const String _paymentBridgeBase =
+      'https://clos21.kr/pay/bridge'; // 서버에서 앱 스킴으로 redirect해야 함
 
   /// ⭐ 리뷰에서 사용할 기본 이미지 (충전소 개별 사진이 아직 없으므로 공통)
   static const String _defaultStationImageUrl =
@@ -233,6 +248,9 @@ class _MapScreenState extends State<MapScreen> {
   static const List<String> _parkingCategoryOptions = ['공영', '민영'];
   static const List<String> _parkingTypeOptions = ['노상', '노외'];
   static const List<String> _parkingFeeTypeOptions = ['무료', '유료'];
+  bool _isPaying = false;
+  static const double _defaultH2FlowMinKgPerMin = 1.5;
+  static const double _defaultH2FlowMaxKgPerMin = 3.5;
 
   String? get _stationError => _mapController.stationError;
   List<DynamicIslandAction> _dynamicIslandActions = [];
@@ -2314,6 +2332,11 @@ class _MapScreenState extends State<MapScreen> {
               valueColor: statusColor,
             ),
             _buildPopupInfoRow(
+              icon: Icons.payments_outlined,
+              label: '수소 가격',
+              value: _formatH2Price(station),
+            ),
+            _buildPopupInfoRow(
               icon: Icons.timer_rounded,
               label: '최종 갱신',
               value: station.lastModifiedAt ?? '정보 없음',
@@ -2330,6 +2353,26 @@ class _MapScreenState extends State<MapScreen> {
               label: '대기 차량',
               value: '$waiting대',
             ),
+            if (_hasH2Price(station)) ...[
+              const SizedBox(height: 16),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  style: FilledButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    backgroundColor: _h2MarkerBaseColor,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                  ),
+                  icon: const Icon(Icons.payment),
+                  label: const Text('결제/예약'),
+                  onPressed: _isPaying
+                      ? null
+                      : () => _startH2Payment(context, station),
+                ),
+              ),
+            ],
             const SizedBox(height: 16),
             _buildPopupActions(
               accentColor: _h2MarkerBaseColor,
@@ -2373,6 +2416,12 @@ class _MapScreenState extends State<MapScreen> {
       subtitle: '주차장 정보',
       contentBuilder: (_) {
         final availability = _formatParkingSpaces(lot);
+        final feeSummary = lot.feeSummary ?? '요금 정보 없음';
+        final feeTypeLabel = lot.feeTypeLabel;
+        final classification = [
+          if (lot.category != null && lot.category!.isNotEmpty) lot.category!,
+          if (lot.type != null && lot.type!.isNotEmpty) lot.type!,
+        ].join(' · ');
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
@@ -2387,11 +2436,17 @@ class _MapScreenState extends State<MapScreen> {
                   color: Colors.orange.shade50,
                   textColor: Colors.deepOrange,
                 ),
-                if (lot.feeInfo != null && lot.feeInfo!.isNotEmpty)
+                if (feeTypeLabel != null)
                   _buildPopupChip(
-                    lot.feeInfo!,
-                    icon: Icons.payments_rounded,
+                    feeTypeLabel,
+                    icon: Icons.local_parking_rounded,
                     color: Colors.blueGrey.shade50,
+                  ),
+                if (classification.isNotEmpty)
+                  _buildPopupChip(
+                    classification,
+                    icon: Icons.layers_rounded,
+                    color: Colors.grey.shade100,
                   ),
               ],
             ),
@@ -2407,12 +2462,37 @@ class _MapScreenState extends State<MapScreen> {
               value: lot.tel?.isNotEmpty == true ? lot.tel! : '연락처 정보 없음',
             ),
             _buildPopupInfoRow(
+              icon: Icons.payments_rounded,
+              label: '요금',
+              value: feeSummary,
+            ),
+            _buildPopupInfoRow(
               icon: Icons.local_activity_rounded,
               label: '총 주차면수',
               value: lot.totalSpaces != null
                   ? '${lot.totalSpaces}면'
                   : '정보 없음',
             ),
+            if (_hasParkingPrice(lot)) ...[
+              const SizedBox(height: 16),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  style: FilledButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    backgroundColor: _parkingMarkerBaseColor,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                  ),
+                  icon: const Icon(Icons.payment),
+                  label: const Text('결제/예약'),
+                  onPressed: _isPaying
+                      ? null
+                      : () => _startParkingPayment(context, lot),
+                ),
+              ),
+            ],
             const SizedBox(height: 16),
             _buildPopupActions(
               accentColor: _parkingMarkerBaseColor,
@@ -2500,6 +2580,11 @@ class _MapScreenState extends State<MapScreen> {
               valueColor: statusColor,
             ),
             _buildPopupInfoRow(
+              icon: Icons.payments_outlined,
+              label: '충전 단가',
+              value: _formatEvPrice(station),
+            ),
+            _buildPopupInfoRow(
               icon: Icons.timer_outlined,
               label: '최근 갱신',
               value: station.statusUpdatedAt ?? '정보 없음',
@@ -2514,6 +2599,26 @@ class _MapScreenState extends State<MapScreen> {
               label: '층/구역',
               value: '${station.floor ?? '-'} / ${station.floorType ?? '-'}',
             ),
+            if (_hasEvPrice(station)) ...[
+              const SizedBox(height: 16),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  style: FilledButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    backgroundColor: _evMarkerBaseColor,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                  ),
+                  icon: const Icon(Icons.payment),
+                  label: const Text('결제/예약'),
+                  onPressed: _isPaying
+                      ? null
+                      : () => _startEvPayment(context, station),
+                ),
+              ),
+            ],
             const SizedBox(height: 16),
             _buildPopupActions(
               accentColor: _evMarkerBaseColor,
@@ -2544,6 +2649,485 @@ class _MapScreenState extends State<MapScreen> {
         );
       },
     );
+  }
+
+  bool _hasEvPrice(EVStation station) => (station.pricePerKwh ?? 0) > 0;
+
+  bool _hasH2Price(H2Station station) => (station.price ?? 0) > 0;
+
+  bool _hasParkingPrice(ParkingLot lot) {
+    if (lot.isFree == true) return true;
+    final hasBase = lot.baseFee != null && lot.baseTimeMinutes != null;
+    return hasBase;
+  }
+
+  String _formatCurrency(int amount) {
+    final raw = amount.toString();
+    final buffer = StringBuffer();
+    for (var i = 0; i < raw.length; i++) {
+      if (i > 0 && (raw.length - i) % 3 == 0) buffer.write(',');
+      buffer.write(raw[i]);
+    }
+    return buffer.toString();
+  }
+
+  String _formatH2Price(H2Station station) {
+    if (station.priceText?.trim().isNotEmpty == true) {
+      return station.priceText!.trim();
+    }
+    final price = station.price;
+    if (price == null || price <= 0) return '정보 없음';
+    return '${_formatCurrency(price)}원/kg';
+  }
+
+  String _formatEvPrice(EVStation station) {
+    if (station.priceText?.trim().isNotEmpty == true) {
+      return station.priceText!.trim();
+    }
+    final price = station.pricePerKwh;
+    if (price == null || price <= 0) return '정보 없음';
+    return '${_formatCurrency(price)}원/kWh';
+  }
+
+  Future<double?> _promptQuantity({
+    required String title,
+    required String unit,
+    String? hint,
+  }) async {
+    final controller = TextEditingController();
+    return showDialog<double>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(title),
+        content: TextField(
+          controller: controller,
+          keyboardType:
+              const TextInputType.numberWithOptions(decimal: true, signed: false),
+          decoration: InputDecoration(
+            labelText: '수량 ($unit)',
+            hintText: hint,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('취소'),
+          ),
+          TextButton(
+            onPressed: () {
+              final raw = controller.text.trim();
+              final value = double.tryParse(raw);
+              Navigator.of(ctx).pop(value);
+            },
+            child: const Text('확인'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<bool> _showPaymentConfirm({
+    required String title,
+    required String amountLabel,
+    String? detail,
+  }) async {
+    return await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: Text(title),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('결제 금액: $amountLabel'),
+                if (detail != null) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    detail,
+                    style: const TextStyle(color: Colors.black54),
+                  ),
+                ],
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop(false),
+                child: const Text('취소'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop(true),
+                child: const Text('결제 진행'),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+  }
+
+  Future<void> _startEvPayment(BuildContext context, EVStation station) async {
+    final price = station.pricePerKwh;
+    if (price == null || price <= 0) {
+      _showSnack('요금 정보가 없습니다.');
+      return;
+    }
+    final qty = await _promptQuantity(
+      title: '충전량 입력',
+      unit: 'kWh',
+      hint: '예) 10',
+    );
+    if (qty == null || qty <= 0) return;
+    final amount = (price * qty).ceil();
+    if (amount <= 0) {
+      _showSnack('결제 금액을 계산할 수 없습니다.');
+      return;
+    }
+    String? estimate;
+    if (station.outputKw != null && station.outputKw! > 0) {
+      final minutes = (qty / station.outputKw! * 60).clamp(5, 240);
+      estimate = '예상 소요 약 ${minutes.round()}분 (충전기/차량 상태에 따라 변동)';
+    }
+    final confirmed = await _showPaymentConfirm(
+      title: '결제/예약',
+      amountLabel: '${_formatCurrency(amount)}원',
+      detail: estimate,
+    );
+    if (!confirmed) return;
+    await _startPayment(
+      itemName: '${station.stationName} ${qty.toStringAsFixed(1)}kWh',
+      amount: amount,
+    );
+  }
+
+  Future<void> _startH2Payment(BuildContext context, H2Station station) async {
+    final price = station.price;
+    if (price == null || price <= 0) {
+      _showSnack('수소 가격 정보가 없습니다.');
+      return;
+    }
+    final qty = await _promptQuantity(
+      title: '충전량 입력',
+      unit: 'kg',
+      hint: '예) 5',
+    );
+    if (qty == null || qty <= 0) return;
+    final amount = (price * qty).ceil();
+    if (amount <= 0) {
+      _showSnack('결제 금액을 계산할 수 없습니다.');
+      return;
+    }
+    final minMinutes = qty / _defaultH2FlowMaxKgPerMin * 60;
+    final maxMinutes = qty / _defaultH2FlowMinKgPerMin * 60;
+    final estimate =
+        '예상 소요 약 ${minMinutes.round()}~${maxMinutes.round()}분 (현장 상황에 따라 변동)';
+    final confirmed = await _showPaymentConfirm(
+      title: '결제/예약',
+      amountLabel: '${_formatCurrency(amount)}원',
+      detail: estimate,
+    );
+    if (!confirmed) return;
+    await _startPayment(
+      itemName: '${station.stationName} ${qty.toStringAsFixed(1)}kg',
+      amount: amount,
+    );
+  }
+
+  int? _calculateParkingFee(ParkingLot lot, int minutes) {
+    if (lot.isFree == true) return 0;
+    if (lot.baseTimeMinutes == null || lot.baseFee == null) return null;
+    var total = lot.baseFee!;
+    final remaining = minutes - lot.baseTimeMinutes!;
+    final unitTime = lot.addTimeMinutes ?? lot.baseTimeMinutes;
+    final unitFee = lot.addFee ?? lot.baseFee;
+
+    if (remaining > 0 && unitTime != null && unitFee != null) {
+      final blocks = (remaining / unitTime).ceil();
+      total += blocks * unitFee;
+    }
+    if (lot.dailyMaxFee != null) {
+      total = total > lot.dailyMaxFee! ? lot.dailyMaxFee! : total;
+    }
+    return total;
+  }
+
+  String _formatDate(DateTime date) {
+    String two(int v) => v.toString().padLeft(2, '0');
+    return '${date.year}-${two(date.month)}-${two(date.day)}';
+  }
+
+  String _formatTimeRange(DateTime start, DateTime end) {
+    String two(int v) => v.toString().padLeft(2, '0');
+    String hhmm(DateTime dt) => '${two(dt.hour)}:${two(dt.minute)}';
+    return '${hhmm(start)} ~ ${hhmm(end)}';
+  }
+
+  Future<ParkingReservation?> _pickParkingReservation() async {
+    final today = DateTime.now();
+    final date = await showDatePicker(
+      context: context,
+      initialDate: today,
+      firstDate: today,
+      lastDate: today.add(const Duration(days: 30)),
+    );
+    if (date == null) return null;
+
+    final slots = List<ParkingReservation>.generate(12, (i) {
+      final start = DateTime(date.year, date.month, date.day, i * 2, 0);
+      final end = start.add(const Duration(hours: 2));
+      return ParkingReservation(start: start, end: end);
+    });
+
+    final selectedIndex = await showDialog<int>(
+      context: context,
+      builder: (ctx) => SimpleDialog(
+        title: const Text('이용 시간을 선택하세요 (2시간 단위)'),
+        children: slots
+                .asMap()
+                .entries
+                .map(
+                  (entry) => SimpleDialogOption(
+                    onPressed: () => Navigator.of(ctx).pop(entry.key),
+                    child: Text(
+                      '${_formatTimeRange(entry.value.start, entry.value.end)} (2시간)',
+                    ),
+                  ),
+                )
+                .toList(),
+      ),
+    );
+    if (selectedIndex == null) return null;
+    return slots[selectedIndex];
+  }
+
+  Future<void> _startParkingPayment(
+      BuildContext context, ParkingLot lot) async {
+    final hasPrice = _hasParkingPrice(lot);
+    if (!hasPrice) {
+      _showSnack('요금 정보가 없습니다.');
+      return;
+    }
+    final reservation = await _pickParkingReservation();
+    if (reservation == null) return;
+    final minutes =
+        reservation.end.difference(reservation.start).inMinutes;
+    final amount = _calculateParkingFee(lot, minutes);
+    if (amount == null || amount < 0) {
+      _showSnack('주차 요금을 계산할 수 없습니다.');
+      return;
+    }
+    final detail =
+        '${_formatDate(reservation.start)} · ${_formatTimeRange(reservation.start, reservation.end)} (2시간)';
+    final confirmed = await _showPaymentConfirm(
+      title: '결제/예약',
+      amountLabel: '${_formatCurrency(amount)}원',
+      detail: detail,
+    );
+    if (!confirmed) return;
+    await _startPayment(
+      itemName:
+          '${lot.name} ${_formatTimeRange(reservation.start, reservation.end)} (${_formatDate(reservation.start)})',
+      amount: amount,
+    );
+  }
+
+  Future<void> _startPayment({
+    required String itemName,
+    required int amount,
+  }) async {
+    if (_isPaying) return;
+    setState(() => _isPaying = true);
+    try {
+      final token = await TokenStorage.getAccessToken();
+      if (token == null || token.isEmpty) {
+        _showSnack('로그인 후 결제할 수 있습니다.');
+        return;
+      }
+      final userId = await _resolvePaymentUserId(token);
+      if (userId == null || userId.isEmpty) {
+        _showSnack('사용자 정보를 확인할 수 없어 결제를 진행할 수 없습니다.');
+        return;
+      }
+      final userIdForBody = int.tryParse(userId) ?? userId;
+      if (userId == null || userId.isEmpty) {
+        _showSnack('로그인 후 결제할 수 있습니다.');
+        return;
+      }
+
+      final orderId =
+          'ORDER-${DateTime.now().millisecondsSinceEpoch.toString()}';
+      final approvalUrl = _bridgeUrl('success');
+      final cancelUrl = _bridgeUrl('cancel');
+      final failUrl = _bridgeUrl('fail');
+      final uri = Uri.parse('$_backendBaseUrl/api/payments/kakao/ready');
+      final body = jsonEncode({
+        'orderId': orderId,
+        'userId': userIdForBody,
+        'itemName': itemName,
+        'quantity': 1,
+        'totalAmount': amount,
+        'taxFreeAmount': 0,
+        // 앱으로 바로 돌려보내도록 PG 리다이렉트 URL 명시
+        'approvalUrl': approvalUrl,
+        'cancelUrl': cancelUrl,
+        'failUrl': failUrl,
+      });
+      debugPrint('➡️ Payment ready req: $uri body=$body');
+      final res = await _sendPaymentReady(
+        uri: uri,
+        body: body,
+        token: token,
+      );
+      debugPrint(
+        '⬅️ Payment ready resp ${res.statusCode}: ${_shorten(res.body)}',
+      );
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body) as Map<String, dynamic>;
+        String? pick(Map<String, dynamic> map, List<String> keys) {
+          for (final key in keys) {
+            final value = map[key];
+            if (value is String && value.isNotEmpty) return value;
+          }
+          return null;
+        }
+
+        final appUrl =
+            pick(data, ['next_redirect_app_url', 'nextRedirectAppUrl']);
+        final mobileUrl =
+            pick(data, ['next_redirect_mobile_url', 'nextRedirectMobileUrl']);
+        final androidScheme =
+            pick(data, ['android_app_scheme', 'androidAppScheme']);
+        final iosScheme = pick(data, ['ios_app_scheme', 'iosAppScheme']);
+
+        final candidates = <String>[
+          if (appUrl != null) appUrl,
+          if (Platform.isAndroid && androidScheme != null) androidScheme,
+          if (Platform.isIOS && iosScheme != null) iosScheme,
+          if (mobileUrl != null) mobileUrl,
+        ];
+
+        bool launched = false;
+        for (final url in candidates) {
+          try {
+            final launchUri = Uri.parse(url);
+            launched = await launchUrl(
+              launchUri,
+              mode: LaunchMode.externalApplication,
+            );
+          } catch (_) {
+            launched = false;
+          }
+          if (launched) break;
+        }
+
+        if (!launched) {
+          _showSnack('결제 리다이렉트 주소를 열 수 없습니다.');
+        }
+      } else {
+        _showSnack(
+          '결제 준비 실패 (${res.statusCode}) ${_shorten(res.body)}',
+        );
+      }
+    } catch (e) {
+      _showSnack('결제 처리 중 오류가 발생했습니다: $e');
+    } finally {
+      if (mounted) setState(() => _isPaying = false);
+    }
+  }
+
+  Future<String?> _resolvePaymentUserId(String token) async {
+    // 1순위: 카카오 SDK에서 numeric id 사용
+    try {
+      final user = await UserApi.instance.me();
+      final kakaoId = user.id?.toString();
+      if (kakaoId != null && kakaoId.isNotEmpty) return kakaoId;
+    } catch (_) {
+      // 무시하고 토큰에서 추출 시도
+    }
+
+    // 2순위: clos21 JWT payload에서 추출 (email/blank 제외)
+    final fromToken = _extractUserIdFromToken(token);
+    if (fromToken != null && fromToken.isNotEmpty && !_looksLikeEmail(fromToken)) {
+      return fromToken;
+    }
+    return null;
+  }
+
+  Future<http.Response> _sendPaymentReady({
+    required Uri uri,
+    required String body,
+    required String token,
+  }) async {
+    var headers = {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer $token',
+    };
+    try {
+      var res = await http.post(uri, headers: headers, body: body);
+      if (res.statusCode == 401) {
+        try {
+          await clos_auth.AuthApi.refreshTokens();
+          final refreshed = await TokenStorage.getAccessToken();
+          if (refreshed != null && refreshed.isNotEmpty) {
+            headers = {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer $refreshed',
+            };
+            res = await http.post(uri, headers: headers, body: body);
+          }
+        } catch (e) {
+          debugPrint('❌ Payment ready token refresh failed: $e');
+        }
+      }
+      return res;
+    } catch (e) {
+      rethrow;
+    }
+  }
+
+  String _shorten(String? raw, {int max = 160}) {
+    if (raw == null) return '';
+    final normalized = raw.replaceAll(RegExp(r'\s+'), ' ').trim();
+    if (normalized.length <= max) return normalized;
+    return '${normalized.substring(0, max)}…';
+  }
+
+  bool _looksLikeEmail(String input) => input.contains('@');
+
+  String _bridgeUrl(String result) {
+    final target = '$_appRedirectScheme://pay/$result';
+    final encoded = Uri.encodeComponent(target);
+    return '$_paymentBridgeBase?target=$encoded&result=$result';
+  }
+
+  /// clos21 발급 JWT에서 userId(sub) 추출
+  String? _extractUserIdFromToken(String token) {
+    try {
+      final parts = token.split('.');
+      if (parts.length != 3) return null;
+      String normalize(String input) {
+        // base64url 패딩 보정
+        switch (input.length % 4) {
+          case 2:
+            return '$input==';
+          case 3:
+            return '$input=';
+          default:
+            return input;
+        }
+      }
+
+      final payload = parts[1];
+      final normalized = normalize(payload);
+      final decoded = utf8.decode(base64Url.decode(normalized));
+      final map = jsonDecode(decoded);
+      if (map is Map<String, dynamic>) {
+        final sub = map['sub'] ?? map['userId'] ?? map['id'];
+        if (sub == null) return null;
+        return sub.toString();
+      }
+    } catch (_) {
+      return null;
+    }
+    return null;
   }
 
   // --- 즐겨찾기 관련 ---

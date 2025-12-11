@@ -106,7 +106,9 @@ class MapController extends ChangeNotifier {
 
   Future<void> _loadParking() async {
     try {
-      final lots = await _parkingApi.fetchAll(size: 1000);
+      // 일부 서버에서 큰 페이지 사이즈(예: 1000)로 요청 시 연결이 끊어져
+      // 응답을 받지 못하는 케이스가 있어 기본 사이즈(200)로 조회한다.
+      final lots = await _parkingApi.fetchAll();
       _parkingLots = lots;
       _isLoadingParking = false;
       debugPrint('📥 Parking lots fetched: ${_parkingLots.length}');
