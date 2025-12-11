@@ -27,6 +27,7 @@ import '../../services/parking_lot_api_service.dart';
 import '../bottom_navbar.dart'; // ✅ 공통 하단 네비게이션 바
 import '../etc/review.dart'; // ⭐ 리뷰 작성 페이지
 import 'package:psp2_fn/auth/token_storage.dart'; // 🔑 JWT 저장소
+import 'package:psp2_fn/auth/auth_api.dart' as clos_auth;
 
 /// 🔍 검색용 후보 모델
 class _SearchCandidate {
@@ -221,6 +222,10 @@ class _MapScreenState extends State<MapScreen> {
   /// ⭐ 백엔드 주소 (clos21)
   static const String _backendBaseUrl = 'https://clos21.kr';
   static const String _appRedirectScheme = 'psp2fn';
+  /// KakaoPay는 http/https 리다이렉트만 허용하므로, 서버에 브릿지 페이지를 두고
+  /// 거기서 앱 스킴으로 다시 넘겨준다.
+  static const String _paymentBridgeBase =
+      'https://clos21.kr/pay/bridge'; // 서버에서 앱 스킴으로 redirect해야 함
 
   /// ⭐ 리뷰에서 사용할 기본 이미지 (충전소 개별 사진이 아직 없으므로 공통)
   static const String _defaultStationImageUrl =
@@ -2957,13 +2962,16 @@ class _MapScreenState extends State<MapScreen> {
     setState(() => _isPaying = true);
     try {
       final token = await TokenStorage.getAccessToken();
-      String? userId;
-      try {
-        final user = await UserApi.instance.me();
-        userId = user.id.toString();
-      } catch (_) {
-        userId = null;
+      if (token == null || token.isEmpty) {
+        _showSnack('로그인 후 결제할 수 있습니다.');
+        return;
       }
+      final userId = await _resolvePaymentUserId(token);
+      if (userId == null || userId.isEmpty) {
+        _showSnack('사용자 정보를 확인할 수 없어 결제를 진행할 수 없습니다.');
+        return;
+      }
+      final userIdForBody = int.tryParse(userId) ?? userId;
       if (userId == null || userId.isEmpty) {
         _showSnack('로그인 후 결제할 수 있습니다.');
         return;
@@ -2971,13 +2979,13 @@ class _MapScreenState extends State<MapScreen> {
 
       final orderId =
           'ORDER-${DateTime.now().millisecondsSinceEpoch.toString()}';
-      final approvalUrl = '$_appRedirectScheme://pay/success';
-      final cancelUrl = '$_appRedirectScheme://pay/cancel';
-      final failUrl = '$_appRedirectScheme://pay/fail';
+      final approvalUrl = _bridgeUrl('success');
+      final cancelUrl = _bridgeUrl('cancel');
+      final failUrl = _bridgeUrl('fail');
       final uri = Uri.parse('$_backendBaseUrl/api/payments/kakao/ready');
       final body = jsonEncode({
         'orderId': orderId,
-        'userId': userId,
+        'userId': userIdForBody,
         'itemName': itemName,
         'quantity': 1,
         'totalAmount': amount,
@@ -2987,11 +2995,15 @@ class _MapScreenState extends State<MapScreen> {
         'cancelUrl': cancelUrl,
         'failUrl': failUrl,
       });
-      final headers = {
-        'Content-Type': 'application/json',
-        if (token != null && token.isNotEmpty) 'Authorization': 'Bearer $token',
-      };
-      final res = await http.post(uri, headers: headers, body: body);
+      debugPrint('➡️ Payment ready req: $uri body=$body');
+      final res = await _sendPaymentReady(
+        uri: uri,
+        body: body,
+        token: token,
+      );
+      debugPrint(
+        '⬅️ Payment ready resp ${res.statusCode}: ${_shorten(res.body)}',
+      );
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body) as Map<String, dynamic>;
         String? pick(Map<String, dynamic> map, List<String> keys) {
@@ -3035,13 +3047,112 @@ class _MapScreenState extends State<MapScreen> {
           _showSnack('결제 리다이렉트 주소를 열 수 없습니다.');
         }
       } else {
-        _showSnack('결제 준비 실패 (${res.statusCode})');
+        _showSnack(
+          '결제 준비 실패 (${res.statusCode}) ${_shorten(res.body)}',
+        );
       }
     } catch (e) {
       _showSnack('결제 처리 중 오류가 발생했습니다: $e');
     } finally {
       if (mounted) setState(() => _isPaying = false);
     }
+  }
+
+  Future<String?> _resolvePaymentUserId(String token) async {
+    // 1순위: 카카오 SDK에서 numeric id 사용
+    try {
+      final user = await UserApi.instance.me();
+      final kakaoId = user.id?.toString();
+      if (kakaoId != null && kakaoId.isNotEmpty) return kakaoId;
+    } catch (_) {
+      // 무시하고 토큰에서 추출 시도
+    }
+
+    // 2순위: clos21 JWT payload에서 추출 (email/blank 제외)
+    final fromToken = _extractUserIdFromToken(token);
+    if (fromToken != null && fromToken.isNotEmpty && !_looksLikeEmail(fromToken)) {
+      return fromToken;
+    }
+    return null;
+  }
+
+  Future<http.Response> _sendPaymentReady({
+    required Uri uri,
+    required String body,
+    required String token,
+  }) async {
+    var headers = {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer $token',
+    };
+    try {
+      var res = await http.post(uri, headers: headers, body: body);
+      if (res.statusCode == 401) {
+        try {
+          await clos_auth.AuthApi.refreshTokens();
+          final refreshed = await TokenStorage.getAccessToken();
+          if (refreshed != null && refreshed.isNotEmpty) {
+            headers = {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer $refreshed',
+            };
+            res = await http.post(uri, headers: headers, body: body);
+          }
+        } catch (e) {
+          debugPrint('❌ Payment ready token refresh failed: $e');
+        }
+      }
+      return res;
+    } catch (e) {
+      rethrow;
+    }
+  }
+
+  String _shorten(String? raw, {int max = 160}) {
+    if (raw == null) return '';
+    final normalized = raw.replaceAll(RegExp(r'\s+'), ' ').trim();
+    if (normalized.length <= max) return normalized;
+    return '${normalized.substring(0, max)}…';
+  }
+
+  bool _looksLikeEmail(String input) => input.contains('@');
+
+  String _bridgeUrl(String result) {
+    final target = '$_appRedirectScheme://pay/$result';
+    final encoded = Uri.encodeComponent(target);
+    return '$_paymentBridgeBase?target=$encoded&result=$result';
+  }
+
+  /// clos21 발급 JWT에서 userId(sub) 추출
+  String? _extractUserIdFromToken(String token) {
+    try {
+      final parts = token.split('.');
+      if (parts.length != 3) return null;
+      String normalize(String input) {
+        // base64url 패딩 보정
+        switch (input.length % 4) {
+          case 2:
+            return '$input==';
+          case 3:
+            return '$input=';
+          default:
+            return input;
+        }
+      }
+
+      final payload = parts[1];
+      final normalized = normalize(payload);
+      final decoded = utf8.decode(base64Url.decode(normalized));
+      final map = jsonDecode(decoded);
+      if (map is Map<String, dynamic>) {
+        final sub = map['sub'] ?? map['userId'] ?? map['id'];
+        if (sub == null) return null;
+        return sub.toString();
+      }
+    } catch (_) {
+      return null;
+    }
+    return null;
   }
 
   // --- 즐겨찾기 관련 ---
