@@ -318,26 +318,35 @@ class _MapScreenState extends State<MapScreen> {
 
   Future<void> _prepareClusterIcon() async {
     try {
+      // ?? ?? ???(??? ????? ?????? ??)
       final icon = await NOverlayImage.fromWidget(
         widget: Container(
           width: 44,
           height: 44,
-          decoration: const BoxDecoration(
-            color: _clusterBaseColor,
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              colors: [Color(0xFF0EA5E9), Color(0xFF2563EB)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
             shape: BoxShape.circle,
             boxShadow: [
               BoxShadow(
-                color: Colors.black26,
-                blurRadius: 8,
-                offset: Offset(0, 4),
+                color: Colors.black.withOpacity(0.16),
+                blurRadius: 10,
+                offset: const Offset(0, 5),
               ),
             ],
           ),
-          child: Container(
-            margin: const EdgeInsets.all(6),
-            decoration: BoxDecoration(
-              color: _clusterBaseColor.withOpacity(0.82),
-              shape: BoxShape.circle,
+          child: Center(
+            child: Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                shape: BoxShape.circle,
+                border: Border.all(color: Colors.white, width: 0.6),
+              ),
             ),
           ),
         ),
@@ -1860,8 +1869,8 @@ class _MapScreenState extends State<MapScreen> {
       caption: NOverlayCaption(
         text: '$count',
         textSize: 13,
-        color: Colors.white,
-        haloColor: Colors.black.withOpacity(0.35),
+        color: Colors.black87,
+        haloColor: Colors.white.withOpacity(0.0),
       ),
       captionAligns: const [NAlign.center],
       isHideCollidedSymbols: true,
