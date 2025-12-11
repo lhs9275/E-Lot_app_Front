@@ -1613,7 +1613,7 @@ class _MapScreenState extends State<MapScreen> {
   }
 
   void _handleCameraChange(NCameraUpdateReason reason, bool isAnimated) {
-    _scheduleRenderClusters();
+    // 이동 중에는 기존 오버레이를 유지하고, Idle 시점에만 재렌더링해 깜빡임을 줄인다.
   }
 
   void _handleCameraIdle() {
@@ -3023,9 +3023,9 @@ class _MapScreenState extends State<MapScreen> {
         final iosScheme = pick(data, ['ios_app_scheme', 'iosAppScheme']);
 
         final candidates = <String>[
-          if (appUrl != null) appUrl,
           if (Platform.isAndroid && androidScheme != null) androidScheme,
           if (Platform.isIOS && iosScheme != null) iosScheme,
+          if (appUrl != null) appUrl,
           if (mobileUrl != null) mobileUrl,
         ];
 
