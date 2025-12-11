@@ -42,7 +42,9 @@ Future<void> main() async {
   // Parking API 구성 (미설정 시 EV와 동일 서버로 시도)
   configureParkingLotApi(baseUrl: _resolveParkingBaseUrl());
 
+  debugPrint('NAVER CLIENT: ${dotenv.env['NAVER_MAP_CLIENT_ID']}');
   // 4. 네이버 지도 SDK 초기화
+  WidgetsFlutterBinding.ensureInitialized();
   await _initializeNaverMap();
 
   // 5. 로드된 값으로 KakaoSdk 초기화

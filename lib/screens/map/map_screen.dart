@@ -8,10 +8,9 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_naver_map/flutter_naver_map.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
-import 'package:kakao_flutter_sdk_user/kakao_flutter_sdk_user.dart';
-import 'package:url_launcher/url_launcher.dart';
-import 'cluster_options.dart';
+import 'package:supercluster/supercluster.dart';
 import 'map_controller.dart';
+import 'map_point.dart';
 import 'marker_builders.dart';
 import 'widgets/filter_bar.dart';
 import 'widgets/search_bar.dart';
@@ -84,13 +83,6 @@ class _NearbyFilterResult {
   final String? parkingCategory;
   final String? parkingType;
   final String? parkingFeeType;
-}
-
-class ParkingReservation {
-  final DateTime start;
-  final DateTime end;
-  const ParkingReservation({required this.start, required this.end});
-  int get hours => end.difference(start).inHours;
 }
 
 /// ✅ 이 파일 단독 실행용 엔트리 포인트
@@ -169,6 +161,10 @@ class _MapScreenState extends State<MapScreen> {
   );
   NaverMapController? _controller;
   NOverlayImage? _clusterIcon;
+  SuperclusterMutable<MapPoint>? _clusterIndex;
+  Timer? _renderDebounceTimer;
+  bool _isRenderingClusters = false;
+  bool _queuedRender = false;
 
   // 검색창 컨트롤러
   final TextEditingController _searchController = TextEditingController();
@@ -212,10 +208,6 @@ class _MapScreenState extends State<MapScreen> {
     target: _initialTarget,
     zoom: 8.5,
   );
-  static const NLatLngBounds _koreaBounds = NLatLngBounds(
-    southWest: NLatLng(32.5, 123.5), // 제주 포함 남서쪽
-    northEast: NLatLng(39.5, 132.5), // 독도 포함 북동쪽
-  );
 
   /// ⭐ 백엔드 주소 (clos21)
   static const String _backendBaseUrl = 'https://clos21.kr';
@@ -231,6 +223,9 @@ class _MapScreenState extends State<MapScreen> {
   static const Color _h2MarkerBaseColor = Color(0xFF2563EB); // 파란색 톤
   static const Color _evMarkerBaseColor = Color(0xFF10B981); // 초록색 톤
   static const Color _parkingMarkerBaseColor = Color(0xFFF59E0B); // 주차장 주황
+  static const Color _clusterBaseColor = Color(0xFF111827); // 중성 짙은 슬레이트
+  static const double _clusterDisableZoom = 15;
+  static const int _clusterMinCountForClustering = 20; // 화면 내 포인트가 이 이하면 클러스터 해제
   static const List<String> _evApiTypes = ['ALL', 'CURRENT', 'OPERATION'];
   static const List<String> _h2ApiTypes = ['ALL', 'CURRENT', 'OPERATION'];
   static const List<String> _defaultH2Specs = ['700', '350'];
@@ -238,13 +233,6 @@ class _MapScreenState extends State<MapScreen> {
   static const List<String> _parkingCategoryOptions = ['공영', '민영'];
   static const List<String> _parkingTypeOptions = ['노상', '노외'];
   static const List<String> _parkingFeeTypeOptions = ['무료', '유료'];
-  bool _isPaying = false;
-  static const double _defaultH2FlowMinKgPerMin = 1.5;
-  static const double _defaultH2FlowMaxKgPerMin = 3.5;
-  static const List<int> _parkingHourOptions = [2, 4, 6, 8, 10, 12];
-
-  /// 클러스터 옵션 (기본값)
-  NaverMapClusteringOptions get _clusterOptions => defaultClusterOptions;
 
   String? get _stationError => _mapController.stationError;
   List<DynamicIslandAction> _dynamicIslandActions = [];
@@ -304,6 +292,7 @@ class _MapScreenState extends State<MapScreen> {
     _controller = null;
     _searchController.dispose(); // 검색창 컨트롤러 정리
     _searchFocusNode.dispose();
+    _renderDebounceTimer?.cancel();
     _mapController.removeListener(_onMapControllerChanged);
     _mapController.dispose();
     super.dispose();
@@ -316,8 +305,22 @@ class _MapScreenState extends State<MapScreen> {
           width: 44,
           height: 44,
           decoration: const BoxDecoration(
-            color: _h2MarkerBaseColor,
+            color: _clusterBaseColor,
             shape: BoxShape.circle,
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black26,
+                blurRadius: 8,
+                offset: Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Container(
+            margin: const EdgeInsets.all(6),
+            decoration: BoxDecoration(
+              color: _clusterBaseColor.withOpacity(0.82),
+              shape: BoxShape.circle,
+            ),
           ),
         ),
         context: context,
@@ -333,7 +336,7 @@ class _MapScreenState extends State<MapScreen> {
   void _onMapControllerChanged() {
     // 데이터/필터 변경 시 UI와 마커를 갱신한다.
     if (_isMapLoaded && _controller != null) {
-      unawaited(_renderStationMarkers());
+      unawaited(_rebuildClusterIndex());
     }
     if (_isSearchFocused) {
       unawaited(_refreshDynamicIslandSuggestions());
@@ -363,16 +366,13 @@ class _MapScreenState extends State<MapScreen> {
             NaverMap(
               options: NaverMapViewOptions(
                 initialCameraPosition: _initialCamera,
-                extent: _koreaBounds,
-                minZoom: 4.8, // 제주까지 한 화면에 담길 정도로 축소 허용
                 locationButtonEnable: true,
                 contentPadding: EdgeInsets.only(bottom: mapBottomPadding),
               ),
-
-              /// ⭐ 클러스터 옵션 (플러그인 기본값 사용 — iOS/Android 동일 동작)
-              clusterOptions: _clusterOptions,
               onMapReady: _handleMapReady,
               onMapLoaded: _handleMapLoaded,
+              onCameraChange: _handleCameraChange,
+              onCameraIdle: _handleCameraIdle,
             ),
 
             /// 🔍 상단 검색창 + 자동완성 리스트
@@ -1421,17 +1421,6 @@ class _MapScreenState extends State<MapScreen> {
     return '${meters.round()}m';
   }
 
-  String _formatCurrency(int amount) {
-    final negative = amount < 0;
-    final raw = amount.abs().toString();
-    final buffer = StringBuffer();
-    for (var i = 0; i < raw.length; i++) {
-      if (i > 0 && (raw.length - i) % 3 == 0) buffer.write(',');
-      buffer.write(raw[i]);
-    }
-    return negative ? '-${buffer.toString()}' : buffer.toString();
-  }
-
   Future<Position?> _getCurrentPosition() async {
     try {
       final serviceEnabled = await Geolocator.isLocationServiceEnabled();
@@ -1585,36 +1574,32 @@ class _MapScreenState extends State<MapScreen> {
   String _formatParkingSpaces(ParkingLot lot) {
     final hasAvailable = lot.availableSpaces != null;
     final hasTotal = lot.totalSpaces != null;
-    final occupied = lot.occupiedSpaces;
     if (hasAvailable || hasTotal) {
       final available = hasAvailable ? lot.availableSpaces.toString() : '-';
       final total = hasTotal ? lot.totalSpaces.toString() : '-';
       return '$available / $total';
     }
-    if (occupied != null) {
-      return '사용 $occupied면';
-    }
     return '정보 없음';
-  }
-
-  String _formatH2Price(H2Station station) {
-    return station.priceLabel ?? '정보 없음';
-  }
-
-  String _formatEvPrice(EVStation station) {
-    return station.priceLabel ?? '정보 없음';
   }
 
   // --- 지도 / 마커 관련 ---
   /// 지도 준비 완료 후 컨트롤러를 보관하고 첫 렌더링을 수행한다.
   void _handleMapReady(NaverMapController controller) {
     _controller = controller;
-    unawaited(_renderStationMarkers());
+    unawaited(_rebuildClusterIndex());
   }
 
   void _handleMapLoaded() {
     _isMapLoaded = true;
-    unawaited(_renderStationMarkers());
+    unawaited(_rebuildClusterIndex());
+  }
+
+  void _handleCameraChange(NCameraUpdateReason reason, bool isAnimated) {
+    _scheduleRenderClusters();
+  }
+
+  void _handleCameraIdle() {
+    _scheduleRenderClusters(immediate: true);
   }
 
   Future<void> _loadStationsRespectingFilter({bool showSpinner = false}) async {
@@ -1632,7 +1617,7 @@ class _MapScreenState extends State<MapScreen> {
       setState(() => _isManualRefreshing = false);
     }
     if (_isMapLoaded && _controller != null) {
-      unawaited(_renderStationMarkers());
+      unawaited(_rebuildClusterIndex());
     }
   }
 
@@ -1728,58 +1713,198 @@ class _MapScreenState extends State<MapScreen> {
     }
   }
 
-  /// 지도에 표시할 모든 마커를 다시 생성하고 등록한다.
-  Future<void> _renderStationMarkers() async {
+  /// 데이터 필터링 상태에 맞춰 클러스터 인덱스를 다시 구축하고, 현재 뷰포트에 표시한다.
+  Future<void> _rebuildClusterIndex() async {
+    final points = _mapController.buildPoints();
+    final index = SuperclusterMutable<MapPoint>(
+      getX: (p) => p.lng,
+      getY: (p) => p.lat,
+      minZoom: 0,
+      maxZoom: 16,
+      radius: 60,
+    )..load(points);
+    _clusterIndex = index;
+
+    debugPrint('🎯 Rebuilt cluster index with ${points.length} points');
+    if (_isMapLoaded && mounted) {
+      _scheduleRenderClusters(immediate: true);
+    }
+  }
+
+  /// 카메라 이동 시 클러스터 렌더를 디바운스해 과도한 호출을 막는다.
+  void _scheduleRenderClusters({bool immediate = false}) {
+    if (_clusterIndex == null || !_isMapLoaded) return;
+
+    if (immediate) {
+      _renderDebounceTimer?.cancel();
+      unawaited(_renderVisibleClusters());
+      return;
+    }
+
+    _renderDebounceTimer?.cancel();
+    _renderDebounceTimer = Timer(const Duration(milliseconds: 80), () {
+      unawaited(_renderVisibleClusters());
+    });
+  }
+
+  Future<void> _renderVisibleClusters() async {
+    final controller = _controller;
+    final index = _clusterIndex;
+    if (controller == null || index == null) return;
+    if (_isRenderingClusters) {
+      _queuedRender = true;
+      return;
+    }
+
+    _isRenderingClusters = true;
+
+    NCameraPosition camera;
+    NLatLngBounds bounds;
+    try {
+      camera = await controller.getCameraPosition();
+      bounds = await controller.getContentBounds();
+    } catch (e) {
+      debugPrint('Camera/bounds fetch failed: $e');
+      return;
+    }
+
+    final double zoom = camera.zoom;
+    final points = _mapController.buildPoints();
+    final pointsInBounds =
+        points.where((p) => _isPointInBounds(p, bounds)).toList();
+
+    final bool disableCluster = zoom > _clusterDisableZoom ||
+        pointsInBounds.length <= _clusterMinCountForClustering;
+    final overlays = <NAddableOverlay>{};
+
+    if (disableCluster) {
+      // 고배율에서는 클러스터를 해제하고 개별 포인트만 표시.
+      for (final point in pointsInBounds) {
+        overlays.add(_buildPointMarker(point));
+      }
+    } else {
+      final int intZoom = zoom.round().clamp(index.minZoom, index.maxZoom);
+      final elements = index.search(
+        bounds.southWest.longitude,
+        bounds.southWest.latitude,
+        bounds.northEast.longitude,
+        bounds.northEast.latitude,
+        intZoom,
+      );
+
+      for (final element in elements) {
+        element.handle(
+          cluster: (cluster) {
+            overlays.add(
+              _buildClusterMarker(cluster, currentZoom: zoom),
+            );
+            return null;
+          },
+          point: (point) {
+            overlays.add(_buildPointMarker(point.originalPoint));
+            return null;
+          },
+        );
+      }
+    }
+
+    try {
+      await controller.clearOverlays(type: NOverlayType.marker);
+      if (overlays.isEmpty) return;
+      await controller.addOverlayAll(overlays);
+      if (Platform.isIOS) {
+        await controller.forceRefresh();
+      }
+      debugPrint(
+        '✅ Added ${overlays.length} markers (zoom ${camera.zoom.toStringAsFixed(1)})',
+      );
+    } catch (error) {
+      debugPrint('Marker overlay add failed: $error');
+    } finally {
+      _isRenderingClusters = false;
+      if (_queuedRender) {
+        _queuedRender = false;
+        unawaited(_renderVisibleClusters());
+      }
+    }
+  }
+
+  NMarker _buildPointMarker(MapPoint point) {
+    switch (point.type) {
+      case MapPointType.h2:
+        return buildH2Marker(
+          station: point.h2!,
+          tint: _h2MarkerBaseColor,
+          statusColor: _h2StatusColor,
+          onTap: _showH2StationPopup,
+        );
+      case MapPointType.ev:
+        return buildEvMarker(
+          station: point.ev!,
+          tint: _evMarkerBaseColor,
+          statusColor: _evStatusColor,
+          onTap: _showEvStationPopup,
+        );
+      case MapPointType.parking:
+        return buildParkingMarker(
+          lot: point.parking!,
+          tint: _parkingMarkerBaseColor,
+          onTap: _showParkingLotPopup,
+        );
+    }
+  }
+
+  NMarker _buildClusterMarker(
+    LayerCluster<MapPoint> cluster, {
+    double? currentZoom,
+  }) {
+    final count = cluster.childPointCount;
+    final marker = NMarker(
+      id: 'cluster_${cluster.uuid}',
+      position: NLatLng(cluster.latitude, cluster.longitude),
+      size: const Size(56, 56),
+      icon: _clusterIcon,
+      caption: NOverlayCaption(
+        text: '$count',
+        textSize: 13,
+        color: Colors.white,
+        haloColor: Colors.black.withOpacity(0.35),
+      ),
+      captionAligns: const [NAlign.center],
+      isHideCollidedSymbols: true,
+      isHideCollidedMarkers: true,
+    );
+    marker.setOnTapListener(
+      (_) => _zoomIntoCluster(cluster, currentZoom: currentZoom),
+    );
+    return marker;
+  }
+
+  bool _isPointInBounds(MapPoint point, NLatLngBounds bounds) {
+    return point.lat >= bounds.southWest.latitude &&
+        point.lat <= bounds.northEast.latitude &&
+        point.lng >= bounds.southWest.longitude &&
+        point.lng <= bounds.northEast.longitude;
+  }
+
+  Future<void> _zoomIntoCluster(
+    LayerCluster<MapPoint> cluster, {
+    double? currentZoom,
+  }) async {
     final controller = _controller;
     if (controller == null) return;
 
-    try {
-      // 🔥 클러스터러블 마커 타입으로 지워야 함
-      await controller.clearOverlays(type: NOverlayType.clusterableMarker);
-      // 또는 완전히 싹 다 지우고 싶으면:
-      // await controller.clearOverlays();
-    } catch (_) {
-      // 초기 로딩 동안은 컨트롤러 정리가 실패할 수 있으므로 무시한다.
-    }
+    double zoom = currentZoom ?? (await controller.getCameraPosition()).zoom;
+    zoom = (zoom + 1.5).clamp(0, 20);
 
-    final overlays = _mapController.buildMarkers(
-      h2Builder: (station) => buildH2Marker(
-        station: station,
-        tint: _h2MarkerBaseColor,
-        statusColor: _h2StatusColor,
-        onTap: _showH2StationPopup,
-      ),
-      evBuilder: (station) => buildEvMarker(
-        station: station,
-        tint: _evMarkerBaseColor,
-        statusColor: _evStatusColor,
-        onTap: _showEvStationPopup,
-      ),
-      parkingBuilder: (lot) => buildParkingMarker(
-        lot: lot,
-        tint: _parkingMarkerBaseColor,
-        onTap: _showParkingLotPopup,
+    await controller.updateCamera(
+      NCameraUpdate.fromCameraPosition(
+        NCameraPosition(
+          target: NLatLng(cluster.latitude, cluster.longitude),
+          zoom: zoom,
+        ),
       ),
     );
-
-    debugPrint(
-      '🎯 Render markers (filtered): '
-          'H2=${_mapController.showH2 ? _mapController.h2StationsWithCoords.length : 0}, '
-          'EV=${_mapController.showEv ? _mapController.evStationsWithCoords.length : 0}, '
-          'P=${_mapController.showParking ? _mapController.parkingLotsWithCoords.length : 0}',
-    );
-
-    if (overlays.isEmpty) return;
-    try {
-      await controller.addOverlayAll(overlays);
-      if (Platform.isIOS) {
-        // iOS에서 클러스터 마커가 갱신되지 않는 경우가 있어 강제 새로고침.
-        await controller.forceRefresh();
-      }
-      debugPrint('✅ Added ${overlays.length} clusterable markers');
-    } catch (error) {
-      debugPrint('Marker overlay add failed: $error');
-    }
   }
 
   Future<void> _refreshStations() async {
@@ -2214,11 +2339,6 @@ class _MapScreenState extends State<MapScreen> {
               valueColor: statusColor,
             ),
             _buildPopupInfoRow(
-              icon: Icons.payments_outlined,
-              label: '수소 가격',
-              value: _formatH2Price(station),
-            ),
-            _buildPopupInfoRow(
               icon: Icons.timer_rounded,
               label: '최종 갱신',
               value: station.lastModifiedAt ?? '정보 없음',
@@ -2235,26 +2355,6 @@ class _MapScreenState extends State<MapScreen> {
               label: '대기 차량',
               value: '$waiting대',
             ),
-            if (_hasH2Price(station)) ...[
-              const SizedBox(height: 16),
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton.icon(
-                  style: FilledButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    backgroundColor: _h2MarkerBaseColor,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                  ),
-                  icon: const Icon(Icons.payment),
-                  label: const Text('결제/예약'),
-                  onPressed: _isPaying
-                      ? null
-                      : () => _startH2Payment(context, station),
-                ),
-              ),
-            ],
             const SizedBox(height: 16),
             _buildPopupActions(
               accentColor: _h2MarkerBaseColor,
@@ -2298,12 +2398,6 @@ class _MapScreenState extends State<MapScreen> {
       subtitle: '주차장 정보',
       contentBuilder: (_) {
         final availability = _formatParkingSpaces(lot);
-        final feeSummary = lot.feeSummary ?? '요금 정보 없음';
-        final feeTypeLabel = lot.feeTypeLabel;
-        final classification = [
-          if (lot.category != null && lot.category!.isNotEmpty) lot.category!,
-          if (lot.type != null && lot.type!.isNotEmpty) lot.type!,
-        ].join(' · ');
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
@@ -2318,17 +2412,11 @@ class _MapScreenState extends State<MapScreen> {
                   color: Colors.orange.shade50,
                   textColor: Colors.deepOrange,
                 ),
-                if (feeTypeLabel != null)
+                if (lot.feeInfo != null && lot.feeInfo!.isNotEmpty)
                   _buildPopupChip(
-                    feeTypeLabel,
-                    icon: Icons.local_parking_rounded,
+                    lot.feeInfo!,
+                    icon: Icons.payments_rounded,
                     color: Colors.blueGrey.shade50,
-                  ),
-                if (classification.isNotEmpty)
-                  _buildPopupChip(
-                    classification,
-                    icon: Icons.layers_rounded,
-                    color: Colors.grey.shade100,
                   ),
               ],
             ),
@@ -2344,37 +2432,12 @@ class _MapScreenState extends State<MapScreen> {
               value: lot.tel?.isNotEmpty == true ? lot.tel! : '연락처 정보 없음',
             ),
             _buildPopupInfoRow(
-              icon: Icons.payments_rounded,
-              label: '요금',
-              value: feeSummary,
-            ),
-            _buildPopupInfoRow(
               icon: Icons.local_activity_rounded,
               label: '총 주차면수',
               value: lot.totalSpaces != null
                   ? '${lot.totalSpaces}면'
                   : '정보 없음',
             ),
-            if (_hasParkingPrice(lot)) ...[
-              const SizedBox(height: 16),
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton.icon(
-                  style: FilledButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    backgroundColor: _parkingMarkerBaseColor,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                  ),
-                  icon: const Icon(Icons.payment),
-                  label: const Text('결제/예약'),
-                  onPressed: _isPaying
-                      ? null
-                      : () => _startParkingPayment(context, lot),
-                ),
-              ),
-            ],
             const SizedBox(height: 16),
             _buildPopupActions(
               accentColor: _parkingMarkerBaseColor,
@@ -2462,11 +2525,6 @@ class _MapScreenState extends State<MapScreen> {
               valueColor: statusColor,
             ),
             _buildPopupInfoRow(
-              icon: Icons.payments_outlined,
-              label: '충전 단가',
-              value: _formatEvPrice(station),
-            ),
-            _buildPopupInfoRow(
               icon: Icons.timer_outlined,
               label: '최근 갱신',
               value: station.statusUpdatedAt ?? '정보 없음',
@@ -2481,26 +2539,6 @@ class _MapScreenState extends State<MapScreen> {
               label: '층/구역',
               value: '${station.floor ?? '-'} / ${station.floorType ?? '-'}',
             ),
-            if (_hasEvPrice(station)) ...[
-              const SizedBox(height: 16),
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton.icon(
-                  style: FilledButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    backgroundColor: _evMarkerBaseColor,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                  ),
-                  icon: const Icon(Icons.payment),
-                  label: const Text('결제/예약'),
-                  onPressed: _isPaying
-                      ? null
-                      : () => _startEvPayment(context, station),
-                ),
-              ),
-            ],
             const SizedBox(height: 16),
             _buildPopupActions(
               accentColor: _evMarkerBaseColor,
@@ -2531,316 +2569,6 @@ class _MapScreenState extends State<MapScreen> {
         );
       },
     );
-  }
-
-  bool _hasEvPrice(EVStation station) =>
-      (station.pricePerKwh ?? 0) > 0;
-
-  bool _hasH2Price(H2Station station) => (station.price ?? 0) > 0;
-
-  bool _hasParkingPrice(ParkingLot lot) {
-    if (lot.isFree == true) return true;
-    // 구조화된 요금 정보가 있을 때만 결제 버튼 노출
-    final hasBase = lot.baseFee != null && lot.baseTimeMinutes != null;
-    return hasBase;
-  }
-
-  Future<double?> _promptQuantity({
-    required String title,
-    required String unit,
-    String? hint,
-  }) async {
-    final controller = TextEditingController();
-    return showDialog<double>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(title),
-        content: TextField(
-          controller: controller,
-          keyboardType:
-              const TextInputType.numberWithOptions(decimal: true, signed: false),
-          decoration: InputDecoration(
-            labelText: '수량 ($unit)',
-            hintText: hint,
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('취소'),
-          ),
-          TextButton(
-            onPressed: () {
-              final raw = controller.text.trim();
-              final value = double.tryParse(raw);
-              Navigator.of(ctx).pop(value);
-            },
-            child: const Text('확인'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Future<bool> _showPaymentConfirm({
-    required String title,
-    required String amountLabel,
-    String? detail,
-  }) async {
-    return await showDialog<bool>(
-          context: context,
-          builder: (ctx) => AlertDialog(
-            title: Text(title),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('결제 금액: $amountLabel'),
-                if (detail != null) ...[
-                  const SizedBox(height: 6),
-                  Text(
-                    detail,
-                    style: const TextStyle(color: Colors.black54),
-                  ),
-                ],
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(ctx).pop(false),
-                child: const Text('취소'),
-              ),
-              TextButton(
-                onPressed: () => Navigator.of(ctx).pop(true),
-                child: const Text('결제 진행'),
-              ),
-            ],
-          ),
-        ) ??
-        false;
-  }
-
-  Future<void> _startEvPayment(BuildContext context, EVStation station) async {
-    final price = station.pricePerKwh;
-    if (price == null || price <= 0) {
-      _showSnack('요금 정보가 없습니다.');
-      return;
-    }
-    final qty = await _promptQuantity(
-      title: '충전량 입력',
-      unit: 'kWh',
-      hint: '예) 10',
-    );
-    if (qty == null || qty <= 0) return;
-    final amount = (price * qty).ceil();
-    if (amount <= 0) {
-      _showSnack('결제 금액을 계산할 수 없습니다.');
-      return;
-    }
-    String? estimate;
-    if (station.outputKw != null && station.outputKw! > 0) {
-      final minutes = (qty / station.outputKw! * 60).clamp(5, 240);
-      estimate = '예상 소요 약 ${minutes.round()}분 (충전기/차량 상태에 따라 변동)';
-    }
-    final confirmed = await _showPaymentConfirm(
-      title: '결제/예약',
-      amountLabel: '${_formatCurrency(amount)}원',
-      detail: estimate,
-    );
-    if (!confirmed) return;
-    await _startPayment(
-      itemName: '${station.stationName} ${qty.toStringAsFixed(1)}kWh',
-      amount: amount,
-    );
-  }
-
-  Future<void> _startH2Payment(BuildContext context, H2Station station) async {
-    final price = station.price;
-    if (price == null || price <= 0) {
-      _showSnack('수소 가격 정보가 없습니다.');
-      return;
-    }
-    final qty = await _promptQuantity(
-      title: '충전량 입력',
-      unit: 'kg',
-      hint: '예) 5',
-    );
-    if (qty == null || qty <= 0) return;
-    final amount = (price * qty).ceil();
-    if (amount <= 0) {
-      _showSnack('결제 금액을 계산할 수 없습니다.');
-      return;
-    }
-    String? estimate;
-    final minMinutes = qty / _defaultH2FlowMaxKgPerMin * 60;
-    final maxMinutes = qty / _defaultH2FlowMinKgPerMin * 60;
-    estimate =
-        '예상 소요 약 ${minMinutes.round()}~${maxMinutes.round()}분 (현장 상황에 따라 변동)';
-    final confirmed = await _showPaymentConfirm(
-      title: '결제/예약',
-      amountLabel: '${_formatCurrency(amount)}원',
-      detail: estimate,
-    );
-    if (!confirmed) return;
-    await _startPayment(
-      itemName: '${station.stationName} ${qty.toStringAsFixed(1)}kg',
-      amount: amount,
-    );
-  }
-
-  int? _calculateParkingFee(ParkingLot lot, int minutes) {
-    if (lot.isFree == true) return 0;
-    if (lot.baseTimeMinutes == null || lot.baseFee == null) return null;
-    var total = lot.baseFee!;
-    final remaining = minutes - lot.baseTimeMinutes!;
-    // 추가 요금 정보가 없으면 기본 요금/시간 단위를 반복 사용한다.
-    final unitTime = lot.addTimeMinutes ?? lot.baseTimeMinutes;
-    final unitFee = lot.addFee ?? lot.baseFee;
-
-    if (remaining > 0 && unitTime != null && unitFee != null) {
-      final blocks = (remaining / unitTime).ceil();
-      total += blocks * unitFee;
-    }
-    if (lot.dailyMaxFee != null) {
-      total = total > lot.dailyMaxFee! ? lot.dailyMaxFee! : total;
-    }
-    return total;
-  }
-
-  String _formatDate(DateTime date) {
-    String two(int v) => v.toString().padLeft(2, '0');
-    return '${date.year}-${two(date.month)}-${two(date.day)}';
-  }
-
-  String _formatTimeRange(DateTime start, DateTime end) {
-    String two(int v) => v.toString().padLeft(2, '0');
-    String hhmm(DateTime dt) => '${two(dt.hour)}:${two(dt.minute)}';
-    return '${hhmm(start)} ~ ${hhmm(end)}';
-  }
-
-  Future<ParkingReservation?> _pickParkingReservation() async {
-    final today = DateTime.now();
-    final date = await showDatePicker(
-      context: context,
-      initialDate: today,
-      firstDate: today,
-      lastDate: today.add(const Duration(days: 30)),
-    );
-    if (date == null) return null;
-
-    final slots = List<ParkingReservation>.generate(12, (i) {
-      final start = DateTime(date.year, date.month, date.day, i * 2, 0);
-      final end = start.add(const Duration(hours: 2));
-      return ParkingReservation(start: start, end: end);
-    });
-
-    final selectedIndex = await showDialog<int>(
-      context: context,
-      builder: (ctx) => SimpleDialog(
-        title: const Text('이용 시간을 선택하세요 (2시간 단위)'),
-        children: slots
-                .asMap()
-                .entries
-                .map(
-                  (entry) => SimpleDialogOption(
-                    onPressed: () => Navigator.of(ctx).pop(entry.key),
-                    child: Text(
-                      '${_formatTimeRange(entry.value.start, entry.value.end)} (2시간)',
-                    ),
-                  ),
-                )
-                .toList(),
-      ),
-    );
-    if (selectedIndex == null) return null;
-    return slots[selectedIndex];
-  }
-
-  Future<void> _startParkingPayment(
-      BuildContext context, ParkingLot lot) async {
-    final hasPrice = _hasParkingPrice(lot);
-    if (!hasPrice) {
-      _showSnack('요금 정보가 없습니다.');
-      return;
-    }
-    final reservation = await _pickParkingReservation();
-    if (reservation == null) return;
-    final minutes =
-        reservation.end.difference(reservation.start).inMinutes;
-    final amount = _calculateParkingFee(lot, minutes);
-    if (amount == null || amount < 0) {
-      _showSnack('주차 요금을 계산할 수 없습니다.');
-      return;
-    }
-    final detail =
-        '${_formatDate(reservation.start)} · ${_formatTimeRange(reservation.start, reservation.end)} (2시간)';
-    final confirmed = await _showPaymentConfirm(
-      title: '결제/예약',
-      amountLabel: '${_formatCurrency(amount)}원',
-      detail: detail,
-    );
-    if (!confirmed) return;
-    await _startPayment(
-      itemName:
-          '${lot.name} ${_formatTimeRange(reservation.start, reservation.end)} (${_formatDate(reservation.start)})',
-      amount: amount,
-    );
-  }
-
-  Future<void> _startPayment({
-    required String itemName,
-    required int amount,
-  }) async {
-    if (_isPaying) return;
-    setState(() => _isPaying = true);
-    try {
-      final token = await TokenStorage.getAccessToken();
-      String? userId;
-      try {
-        final user = await UserApi.instance.me();
-        userId = user.id.toString();
-      } catch (_) {
-        userId = null;
-      }
-      if (userId == null || userId.isEmpty) {
-        _showSnack('로그인 후 결제할 수 있습니다.');
-        return;
-      }
-
-      final orderId =
-          'ORDER-${DateTime.now().millisecondsSinceEpoch.toString()}';
-      final uri = Uri.parse('$_backendBaseUrl/api/payments/kakao/ready');
-      final body = jsonEncode({
-        'orderId': orderId,
-        'userId': userId,
-        'itemName': itemName,
-        'quantity': 1,
-        'totalAmount': amount,
-        'taxFreeAmount': 0,
-      });
-      final headers = {
-        'Content-Type': 'application/json',
-        if (token != null && token.isNotEmpty) 'Authorization': 'Bearer $token',
-      };
-      final res = await http.post(uri, headers: headers, body: body);
-      if (res.statusCode == 200) {
-        final data = jsonDecode(res.body) as Map<String, dynamic>;
-        final redirect =
-            data['next_redirect_mobile_url'] ?? data['nextRedirectMobileUrl'];
-        if (redirect is String && redirect.isNotEmpty) {
-          final launchUri = Uri.parse(redirect);
-          await launchUrl(launchUri, mode: LaunchMode.externalApplication);
-        } else {
-          _showSnack('결제 리다이렉트 주소를 찾을 수 없습니다.');
-        }
-      } else {
-        _showSnack('결제 준비 실패 (${res.statusCode})');
-      }
-    } catch (e) {
-      _showSnack('결제 처리 중 오류가 발생했습니다: $e');
-    } finally {
-      if (mounted) setState(() => _isPaying = false);
-    }
   }
 
   // --- 즐겨찾기 관련 ---
