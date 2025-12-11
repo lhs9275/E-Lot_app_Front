@@ -466,9 +466,6 @@ class _MapScreenState extends State<MapScreen> {
   }
 
   Future<void> _openNearbyFilterSheet() async {
-    final evStatusOptions = _evStatusOptions;
-    final evChargerOptions = _evChargerTypeOptions;
-
     final result = await showModalBottomSheet<_NearbyFilterResult>(
       context: context,
       isScrollControlled: true,
@@ -479,10 +476,10 @@ class _MapScreenState extends State<MapScreen> {
         bool includeH2 = _includeH2Filter;
         bool includeParking = _includeParkingFilter;
         double radiusKm = _radiusKmFilter;
-        String? evType = _evTypeFilter;
+        String? evType;
         String? evStatus = _evStatusFilter;
         String? evCharger = _evChargerTypeFilter;
-        String? h2Type = _h2TypeFilter;
+        String? h2Type;
         Set<String> h2Specs = {..._h2SpecFilter};
         Set<String> h2StationTypes = {..._h2StationTypeFilter};
         bool usePrice = _h2PriceMin != null || _h2PriceMax != null;
@@ -672,37 +669,24 @@ class _MapScreenState extends State<MapScreen> {
                               ),
                               const SizedBox(height: 8),
                               DropdownButtonFormField<String?>(
-                                value: evType,
-                                decoration: inputDecoration('데이터 소스'),
-                                items: [
-                                  const DropdownMenuItem<String?>(
-                                    value: null,
-                                    child: Text('전체'),
-                                  ),
-                                  ..._evApiTypes.map(
-                                        (t) => DropdownMenuItem<String?>(
-                                      value: t,
-                                      child: Text(t),
-                                    ),
-                                  ),
-                                ],
-                                onChanged: (value) =>
-                                    setModalState(() => evType = value),
-                              ),
-                              const SizedBox(height: 8),
-                              DropdownButtonFormField<String?>(
                                 value: evStatus,
                                 decoration: inputDecoration('상태'),
-                                items: [
-                                  const DropdownMenuItem<String?>(
+                                items: const [
+                                  DropdownMenuItem<String?>(
                                     value: null,
                                     child: Text('전체'),
                                   ),
-                                  ...evStatusOptions.map(
-                                        (s) => DropdownMenuItem<String?>(
-                                      value: s,
-                                      child: Text(s),
-                                    ),
+                                  DropdownMenuItem<String?>(
+                                    value: '2',
+                                    child: Text('충전대기(사용 가능)'),
+                                  ),
+                                  DropdownMenuItem<String?>(
+                                    value: '3',
+                                    child: Text('충전중'),
+                                  ),
+                                  DropdownMenuItem<String?>(
+                                    value: '5',
+                                    child: Text('운영중지/점검'),
                                   ),
                                 ],
                                 onChanged: (value) =>
@@ -712,16 +696,26 @@ class _MapScreenState extends State<MapScreen> {
                               DropdownButtonFormField<String?>(
                                 value: evCharger,
                                 decoration: inputDecoration('충전기 타입'),
-                                items: [
-                                  const DropdownMenuItem<String?>(
+                                items: const [
+                                  DropdownMenuItem<String?>(
                                     value: null,
                                     child: Text('전체'),
                                   ),
-                                  ...evChargerOptions.map(
-                                        (s) => DropdownMenuItem<String?>(
-                                      value: s,
-                                      child: Text(s),
-                                    ),
+                                  DropdownMenuItem<String?>(
+                                    value: '06',
+                                    child: Text('멀티(차데모/AC3상/콤보)'),
+                                  ),
+                                  DropdownMenuItem<String?>(
+                                    value: '04',
+                                    child: Text('급속(DC콤보)'),
+                                  ),
+                                  DropdownMenuItem<String?>(
+                                    value: '02',
+                                    child: Text('완속(AC완속)'),
+                                  ),
+                                  DropdownMenuItem<String?>(
+                                    value: '07',
+                                    child: Text('기타(AC3상 등)'),
                                   ),
                                 ],
                                 onChanged: (value) =>
@@ -738,25 +732,6 @@ class _MapScreenState extends State<MapScreen> {
                                     ?.copyWith(fontWeight: FontWeight.bold),
                               ),
                               const SizedBox(height: 8),
-                              DropdownButtonFormField<String?>(
-                                value: h2Type,
-                                decoration: inputDecoration('데이터 소스'),
-                                items: [
-                                  const DropdownMenuItem<String?>(
-                                    value: null,
-                                    child: Text('전체'),
-                                  ),
-                                  ..._h2ApiTypes.map(
-                                        (t) => DropdownMenuItem<String?>(
-                                      value: t,
-                                      child: Text(t),
-                                    ),
-                                  ),
-                                ],
-                                onChanged: (value) =>
-                                    setModalState(() => h2Type = value),
-                              ),
-                              const SizedBox(height: 10),
                               Text(
                                 '규격(SPEC)',
                                 style: const TextStyle(
