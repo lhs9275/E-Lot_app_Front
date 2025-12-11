@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'map.dart';
 import 'user/favorite.dart';
 import 'user/mypage.dart';
+import 'etc/ranking.dart';
 
 class MainBottomNavBar extends StatelessWidget {
   /// 현재 선택된 탭 index (0: 추천랭킹, 1: 즐겨찾기, 2: 기존메뉴, 3: 내 정보)
@@ -21,29 +22,29 @@ class MainBottomNavBar extends StatelessWidget {
   final Color _iconGrey = const Color(0xFFB5B5C3); // 선택 안 된 아이콘 색
 
   void _handleTap(BuildContext context, int index) {
-    if (index == currentIndex) return;
-
-    Widget target;
+    Widget? target;
     switch (index) {
-      case 0: // 기존: 지도 -> 변경 예정: 추천 랭킹
-        target = const MapScreen();
+      case 0: // ?? ??
+        target = const RankingScreen();
         break;
-      case 1: // 기존: 랭킹 -> 변경 예정: 즐겨찾기
-        Navigator.of(context).pushReplacementNamed('/ranking');
-        return;
-      case 2: // 즐겨찾기 (리스트 아이콘)
+      case 1: // ????
         target = const FavoritesPage();
         break;
-      case 3: // 내 정보 (사람 아이콘)
+      case 2: // ? ?? (???)
+        target = null;
+        break;
+      case 3: // ?????
         target = const MyPageScreen();
         break;
       default:
         return;
     }
 
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute(builder: (_) => target),
-    );
+    if (target != null) {
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(builder: (_) => target!),
+      );
+    }
   }
 
   @override
@@ -128,7 +129,8 @@ class MainBottomNavBar extends StatelessWidget {
         child: Icon(
           isSelected ? selectedIcon : icon, // 선택되면 꽉 찬 아이콘, 아니면 테두리
           size: 28, // 아이콘 크기 조금 키움
-          color: isSelected ? _purple : _iconGrey,
+          // 전체를 같은 색으로 표시해 선택 강조를 없앰
+          color: _iconGrey,
         ),
       ),
     );
