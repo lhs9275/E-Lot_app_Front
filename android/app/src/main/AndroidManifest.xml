@@ -30,6 +30,13 @@
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
+            <!-- 앱 커스텀 스킴으로 결제 완료/취소 콜백 처리 -->
+            <intent-filter android:autoVerify="false">
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="psp2fn" android:host="pay"/>
+            </intent-filter>
         </activity>
         <!-- Receive Kakao auth-code redirect in Kakao SDK activity -->
         <activity
