@@ -11,6 +11,7 @@ import 'package:http/http.dart' as http;
 import 'package:kakao_flutter_sdk_user/kakao_flutter_sdk_user.dart';
 import 'package:supercluster/supercluster.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:uni_links/uni_links.dart';
 import 'map_controller.dart';
 import 'map_point.dart';
 import 'marker_builders.dart';
@@ -175,6 +176,8 @@ class _MapScreenState extends State<MapScreen> {
   Timer? _renderDebounceTimer;
   bool _isRenderingClusters = false;
   bool _queuedRender = false;
+  StreamSubscription<String?>? _linkSub;
+  bool _isApprovingPayment = false;
 
   // 검색창 컨트롤러
   final TextEditingController _searchController = TextEditingController();
@@ -302,6 +305,7 @@ class _MapScreenState extends State<MapScreen> {
         unawaited(_refreshDynamicIslandSuggestions());
       }
     });
+    _initDeepLinks();
     WidgetsBinding.instance.addPostFrameCallback((_) => _prepareClusterIcon());
   }
 
@@ -311,6 +315,7 @@ class _MapScreenState extends State<MapScreen> {
     _searchController.dispose(); // 검색창 컨트롤러 정리
     _searchFocusNode.dispose();
     _renderDebounceTimer?.cancel();
+    _linkSub?.cancel();
     _mapController.removeListener(_onMapControllerChanged);
     _mapController.dispose();
     super.dispose();
@@ -348,6 +353,28 @@ class _MapScreenState extends State<MapScreen> {
     } catch (e) {
       debugPrint('Cluster icon build failed: $e');
     }
+  }
+
+  void _initDeepLinks() {
+    // 초기 링크 처리
+    Future<void>(() async {
+      try {
+        final initial = await getInitialLink();
+        if (!mounted) return;
+        await _handleIncomingLink(initial);
+      } catch (e) {
+        debugPrint('Initial link error: $e');
+      }
+    });
+
+    // 실시간 링크 스트림 구독
+    _linkSub?.cancel();
+    _linkSub = linkStream.listen(
+      (link) {
+        unawaited(_handleIncomingLink(link));
+      },
+      onError: (err) => debugPrint('Link stream error: $err'),
+    );
   }
 
 
@@ -2977,11 +3004,12 @@ class _MapScreenState extends State<MapScreen> {
         return;
       }
 
-      final orderId =
-          'ORDER-${DateTime.now().millisecondsSinceEpoch.toString()}';
       final approvalUrl = _bridgeUrl('success');
       final cancelUrl = _bridgeUrl('cancel');
       final failUrl = _bridgeUrl('fail');
+
+      final orderId =
+          'ORDER-${DateTime.now().millisecondsSinceEpoch.toString()}';
       final uri = Uri.parse('$_backendBaseUrl/api/payments/kakao/ready');
       final body = jsonEncode({
         'orderId': orderId,
@@ -3022,11 +3050,12 @@ class _MapScreenState extends State<MapScreen> {
             pick(data, ['android_app_scheme', 'androidAppScheme']);
         final iosScheme = pick(data, ['ios_app_scheme', 'iosAppScheme']);
 
+        // 딥링크를 우선 시도하고, 실패 시 HTTPS 모바일/앱 URL로 폴백.
         final candidates = <String>[
           if (Platform.isAndroid && androidScheme != null) androidScheme,
           if (Platform.isIOS && iosScheme != null) iosScheme,
-          if (appUrl != null) appUrl,
-          if (mobileUrl != null) mobileUrl,
+          if (mobileUrl != null) mobileUrl, // HTTPS 경로로 승인 콜백 보조
+          if (appUrl != null) appUrl, // 카카오에서 제공하는 일반 앱 링크
         ];
 
         bool launched = false;
@@ -3105,6 +3134,82 @@ class _MapScreenState extends State<MapScreen> {
       return res;
     } catch (e) {
       rethrow;
+    }
+  }
+
+  Future<void> _handleIncomingLink(String? link) async {
+    if (link == null || link.isEmpty) return;
+    Uri? uri;
+    try {
+      uri = Uri.parse(link);
+    } catch (_) {
+      return;
+    }
+    if (uri.scheme != _appRedirectScheme || uri.host != 'pay') return;
+    if (uri.pathSegments.isEmpty) return;
+
+    final result = uri.pathSegments.first;
+    final orderId = uri.queryParameters['orderId'];
+    final pgToken = uri.queryParameters['pg_token'];
+
+    switch (result) {
+      case 'success':
+        if (orderId != null && pgToken != null) {
+          await _approvePayment(orderId: orderId, pgToken: pgToken);
+        } else {
+          _showSnack('결제 승인 정보가 부족합니다.');
+        }
+        break;
+      case 'cancel':
+        _showSnack('결제가 취소되었습니다.');
+        break;
+      case 'fail':
+        _showSnack('결제에 실패했습니다.');
+        break;
+      default:
+        break;
+    }
+  }
+
+  Future<void> _approvePayment({
+    required String orderId,
+    required String pgToken,
+  }) async {
+    if (_isApprovingPayment) return;
+    _isApprovingPayment = true;
+    try {
+      final token = await TokenStorage.getAccessToken();
+      if (token == null || token.isEmpty) {
+        _showSnack('로그인 후 결제 승인 가능합니다.');
+        return;
+      }
+
+      final userId = _extractUserIdFromToken(token);
+      final uri = Uri.parse('$_backendBaseUrl/api/payments/kakao/approve');
+      final payload = jsonEncode({
+        'orderId': orderId,
+        'pgToken': pgToken,
+        if (userId != null) 'userId': userId,
+      });
+
+      final res = await http.post(
+        uri,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: payload,
+      );
+
+      if (res.statusCode == 200) {
+        _showSnack('결제가 승인되었습니다.');
+      } else {
+        _showSnack('결제 승인 실패 (${res.statusCode}) ${_shorten(res.body)}');
+      }
+    } catch (e) {
+      _showSnack('결제 승인 처리 중 오류가 발생했습니다: $e');
+    } finally {
+      _isApprovingPayment = false;
     }
   }
 
