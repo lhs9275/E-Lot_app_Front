@@ -181,7 +181,8 @@ class _MapScreenState extends State<MapScreen> {
   late final MapController _mapController = _cachedMapController ??=
       MapController(h2Api: h2StationApi, evApi: evStationApi, parkingApi: parkingLotApi);
   NaverMapController? _controller;
-  NOverlayImage? _clusterIcon;
+  final Map<int, NOverlayImage> _clusterIconsByBorderColor = {};
+  bool _isBuildingClusterIcons = false;
   SuperclusterMutable<MapPoint>? _clusterIndex;
   Timer? _renderDebounceTimer;
   bool _isRenderingClusters = false;
@@ -257,6 +258,13 @@ class _MapScreenState extends State<MapScreen> {
   static const Color _clusterBaseColor = Color(0xFF111827); // 중성 짙은 슬레이트
   static const double _clusterDisableZoom = 15;
   static const int _clusterMinCountForClustering = 20; // 화면 내 포인트가 이 이하면 클러스터 해제
+  static const Color _clusterBorderHighCountColor = Color(0xFFEF4444); // 빨강
+  static const List<Color> _clusterBorderPalette = [
+    _h2MarkerBaseColor, // 낮은 수: 파랑
+    _evMarkerBaseColor, // 중간 수: 초록
+    _parkingMarkerBaseColor, // 높은 수: 주황
+    _clusterBorderHighCountColor, // 매우 높은 수: 빨강
+  ];
   static const List<String> _evApiTypes = ['ALL', 'CURRENT', 'OPERATION'];
   static const List<String> _h2ApiTypes = ['ALL', 'CURRENT', 'OPERATION'];
   static const List<String> _defaultH2Specs = ['700', '350'];
@@ -322,7 +330,7 @@ class _MapScreenState extends State<MapScreen> {
       }
     });
     _initDeepLinks();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _prepareClusterIcon());
+    WidgetsBinding.instance.addPostFrameCallback((_) => _prepareClusterIcons());
   }
 
   @override
@@ -337,46 +345,53 @@ class _MapScreenState extends State<MapScreen> {
     super.dispose();
   }
 
-  Future<void> _prepareClusterIcon() async {
+  Future<void> _prepareClusterIcons() async {
+    if (_isBuildingClusterIcons) return;
+    _isBuildingClusterIcons = true;
     try {
-      // ?? ?? ???(??? ????? ?????? ??)
-      final icon = await NOverlayImage.fromWidget(
-        widget: Container(
-          width: 44,
-          height: 44,
-          decoration: BoxDecoration(
-            gradient: const LinearGradient(
-              colors: [Color(0xFF0EA5E9), Color(0xFF2563EB)],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
+      final newIcons = <int, NOverlayImage>{};
+      for (final borderColor in _clusterBorderPalette) {
+        if (_clusterIconsByBorderColor.containsKey(borderColor.value)) continue;
+        final icon = await NOverlayImage.fromWidget(
+          widget: Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: borderColor,
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.16),
+                  blurRadius: 10,
+                  offset: const Offset(0, 5),
+                ),
+              ],
             ),
-            shape: BoxShape.circle,
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.16),
-                blurRadius: 10,
-                offset: const Offset(0, 5),
-              ),
-            ],
-          ),
-          child: Center(
-            child: Container(
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(
-                color: Colors.white,
-                shape: BoxShape.circle,
-                border: Border.all(color: Colors.white, width: 0.6),
+            child: Center(
+              child: Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: Colors.white, width: 0.6),
+                ),
               ),
             ),
           ),
-        ),
-        context: context,
-      );
-      if (!mounted) return;
-      setState(() => _clusterIcon = icon);
+          context: context,
+        );
+        newIcons[borderColor.value] = icon;
+      }
+      if (!mounted || newIcons.isEmpty) return;
+      setState(() => _clusterIconsByBorderColor.addAll(newIcons));
+      if (_isMapLoaded && _clusterIndex != null) {
+        _scheduleRenderClusters(immediate: true);
+      }
     } catch (e) {
       debugPrint('Cluster icon build failed: $e');
+    } finally {
+      _isBuildingClusterIcons = false;
     }
   }
 
@@ -506,20 +521,22 @@ class _MapScreenState extends State<MapScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   _buildSearchBar(),
-                  const SizedBox(height: 12),
-                  FilterBar(
-                    showH2: _mapController.showH2,
-                    showEv: _mapController.showEv,
-                    showParking: _mapController.showParking,
-                    h2Color: _h2MarkerBaseColor,
-                    evColor: _evMarkerBaseColor,
-                    parkingColor: _parkingMarkerBaseColor,
-                    onToggleH2: _mapController.toggleH2,
-                    onToggleEv: _mapController.toggleEv,
-                    onToggleParking: _mapController.toggleParking,
-                  ),
-                  const SizedBox(height: 8),
-                  _buildNearbyFilterButton(),
+                  if (!_isSearchFocused) ...[
+                    const SizedBox(height: 12),
+                    FilterBar(
+                      showH2: _mapController.showH2,
+                      showEv: _mapController.showEv,
+                      showParking: _mapController.showParking,
+                      h2Color: _h2MarkerBaseColor,
+                      evColor: _evMarkerBaseColor,
+                      parkingColor: _parkingMarkerBaseColor,
+                      onToggleH2: _mapController.toggleH2,
+                      onToggleEv: _mapController.toggleEv,
+                      onToggleParking: _mapController.toggleParking,
+                    ),
+                    const SizedBox(height: 8),
+                    _buildNearbyFilterButton(),
+                  ],
                 ],
               ),
             ),
@@ -539,15 +556,22 @@ class _MapScreenState extends State<MapScreen> {
       ),
       floatingActionButton: Padding(
         padding: const EdgeInsets.only(bottom: 24, right: 4),
-        child: FloatingActionButton(
-          onPressed: _isManualRefreshing ? null : _refreshStations,
-          child: _isManualRefreshing
-              ? const SizedBox(
-            width: 20,
-            height: 20,
-            child: CircularProgressIndicator(strokeWidth: 2.4),
-          )
-              : const Icon(Icons.refresh),
+        child: IgnorePointer(
+          ignoring: _isSearchFocused,
+          child: AnimatedOpacity(
+            duration: const Duration(milliseconds: 160),
+            opacity: _isSearchFocused ? 0.0 : 1.0,
+            child: FloatingActionButton(
+              onPressed: _isManualRefreshing ? null : _refreshStations,
+              child: _isManualRefreshing
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2.4),
+                    )
+                  : const Icon(Icons.refresh),
+            ),
+          ),
         ),
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
@@ -2010,19 +2034,29 @@ class _MapScreenState extends State<MapScreen> {
     }
   }
 
+  Color _clusterBorderColor(int count) {
+    if (count >= 200) return _clusterBorderHighCountColor;
+    if (count >= 50) return _parkingMarkerBaseColor;
+    if (count >= 15) return _evMarkerBaseColor;
+    return _h2MarkerBaseColor;
+  }
+
   NMarker _buildClusterMarker(
     LayerCluster<MapPoint> cluster, {
     double? currentZoom,
   }) {
     final count = cluster.childPointCount;
+    final borderColor = _clusterBorderColor(count);
+    final icon = _clusterIconsByBorderColor[borderColor.value] ??
+        _clusterIconsByBorderColor[_clusterBorderPalette.first.value];
     final marker = NMarker(
       id: 'cluster_${cluster.uuid}',
       position: NLatLng(cluster.latitude, cluster.longitude),
-      size: const Size(56, 56),
-      icon: _clusterIcon,
+      size: const Size(44, 44),
+      icon: icon,
       caption: NOverlayCaption(
         text: '$count',
-        textSize: 13,
+        textSize: 12,
         color: Colors.black87,
         haloColor: Colors.white.withOpacity(0.0),
       ),
@@ -2443,7 +2477,7 @@ class _MapScreenState extends State<MapScreen> {
       title: station.stationName,
       subtitle: '수소 충전소',
       trailingBuilder: (setPopupState) {
-        final isFav = _isFavoriteStation(station);
+        final isFav = _isFavoriteStationId(station.stationId);
         return IconButton(
           tooltip: '즐겨찾기',
           icon: Icon(
@@ -2451,7 +2485,7 @@ class _MapScreenState extends State<MapScreen> {
             color: isFav ? Colors.amber : Colors.grey.shade500,
           ),
           onPressed: () async {
-            await _toggleFavoriteStation(station);
+            await _toggleFavoriteStationId(station.stationId);
             setPopupState(() {});
           },
         );
@@ -2572,11 +2606,28 @@ class _MapScreenState extends State<MapScreen> {
   void _showParkingLotPopup(ParkingLot lot) async {
     if (!mounted) return;
 
+    await _syncFavoritesFromServer();
+    if (!mounted) return;
+
     await _showFloatingPanel(
       accentColor: _parkingMarkerBaseColor,
       icon: Icons.local_parking_rounded,
       title: lot.name,
       subtitle: '주차장 정보',
+      trailingBuilder: (setPopupState) {
+        final isFav = _isFavoriteStationId(lot.id);
+        return IconButton(
+          tooltip: '즐겨찾기',
+          icon: Icon(
+            isFav ? Icons.star_rounded : Icons.star_border_rounded,
+            color: isFav ? Colors.amber : Colors.grey.shade500,
+          ),
+          onPressed: () async {
+            await _toggleFavoriteStationId(lot.id);
+            setPopupState(() {});
+          },
+        );
+      },
       contentBuilder: (_) {
         final availability = _formatParkingSpaces(lot);
         final feeSummary = lot.feeSummary ?? '요금 정보 없음';
@@ -2692,11 +2743,28 @@ class _MapScreenState extends State<MapScreen> {
   void _showEvStationPopup(EVStation station) async {
     if (!mounted) return;
 
+    await _syncFavoritesFromServer();
+    if (!mounted) return;
+
     await _showFloatingPanel(
       accentColor: _evMarkerBaseColor,
       icon: Icons.electric_car_rounded,
       title: station.stationName,
       subtitle: '전기 충전소',
+      trailingBuilder: (setPopupState) {
+        final isFav = _isFavoriteStationId(station.stationId);
+        return IconButton(
+          tooltip: '즐겨찾기',
+          icon: Icon(
+            isFav ? Icons.star_rounded : Icons.star_border_rounded,
+            color: isFav ? Colors.amber : Colors.grey.shade500,
+          ),
+          onPressed: () async {
+            await _toggleFavoriteStationId(station.stationId);
+            setPopupState(() {});
+          },
+        );
+      },
       contentBuilder: (_) {
         final statusColor = _evStatusColor(station.statusLabel);
         final outputText =
@@ -3776,12 +3844,11 @@ class _MapScreenState extends State<MapScreen> {
 
   // --- 즐겨찾기 관련 ---
   /// 현재 스테이션이 즐겨찾기인지 여부를 빠르게 확인한다.
-  bool _isFavoriteStation(H2Station station) =>
-      _favoriteStationIds.contains(station.stationId);
+  bool _isFavoriteStationId(String stationId) =>
+      _favoriteStationIds.contains(stationId);
 
   /// 백엔드 즐겨찾기 API를 호출해 서버와 상태를 동기화한다.
-  Future<void> _toggleFavoriteStation(H2Station station) async {
-    final stationId = station.stationId;
+  Future<void> _toggleFavoriteStationId(String stationId) async {
     final isFav = _favoriteStationIds.contains(stationId);
 
     // 🔑 accessToken 안전하게 가져오기

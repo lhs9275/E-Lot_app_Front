@@ -32,6 +32,10 @@ dev_dependencies:
 
   flutter_lints: ^5.0.0
 
+dependency_overrides:
+  uni_links:
+    path: packages/uni_links
+
 flutter:
   uses-material-design: true
 

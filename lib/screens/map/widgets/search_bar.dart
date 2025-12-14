@@ -106,13 +106,15 @@ class SearchBarSection extends StatelessWidget {
       final key = action.category ?? '추천';
       grouped.putIfAbsent(key, () => []).add(action);
     }
+    final double maxHeight =
+        (MediaQuery.sizeOf(context).height * 0.56).clamp(320.0, 520.0).toDouble();
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 220),
       child: shouldShow
           ? Container(
               key: const ValueKey('dynamic_island'),
               width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               decoration: BoxDecoration(
                 color: Colors.black.withOpacity(0.88),
                 borderRadius: BorderRadius.circular(20),
@@ -124,52 +126,58 @@ class SearchBarSection extends StatelessWidget {
                   ),
                 ],
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: const [
-                      Icon(Icons.trending_up, size: 18, color: Colors.white),
-                      SizedBox(width: 6),
-                      Text(
-                        '내 주변의 시설',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w700,
+              child: ConstrainedBox(
+                constraints: BoxConstraints(maxHeight: maxHeight),
+                child: SingleChildScrollView(
+                  physics: const BouncingScrollPhysics(),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: const [
+                          Icon(Icons.trending_up, size: 18, color: Colors.white),
+                          SizedBox(width: 6),
+                          Text(
+                            '내 주변의 시설',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      ...grouped.entries.map(
+                        (group) => Padding(
+                          padding: const EdgeInsets.only(bottom: 8),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                group.key,
+                                style: const TextStyle(
+                                  color: Colors.white70,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              ...group.value.asMap().entries.map(
+                                    (entry) => _DynamicIslandSuggestion(
+                                      rank: entry.key + 1,
+                                      action: entry.value,
+                                      onTap: onActionTap != null
+                                          ? () => onActionTap?.call(entry.value)
+                                          : null,
+                                    ),
+                                  ),
+                            ],
+                          ),
                         ),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 10),
-                  ...grouped.entries.map(
-                    (group) => Padding(
-                      padding: const EdgeInsets.only(bottom: 8),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            group.key,
-                            style: const TextStyle(
-                              color: Colors.white70,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                          const SizedBox(height: 6),
-                          ...group.value.asMap().entries.map(
-                                (entry) => _DynamicIslandSuggestion(
-                                  rank: entry.key + 1,
-                                  action: entry.value,
-                                  onTap: onActionTap != null
-                                      ? () => onActionTap?.call(entry.value)
-                                      : null,
-                                ),
-                              ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
+                ),
               ),
             )
           : const SizedBox.shrink(),

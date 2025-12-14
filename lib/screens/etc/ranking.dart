@@ -38,17 +38,16 @@ class _RankingScreenState extends State<RankingScreen> {
 
   static const String _defaultPreset = 'BALANCED';
 
-  // --- 🎨 디자인 컬러 팔레트 (여기가 핵심!) ---
-  final Color _bgColor = const Color(0xFFF9FBFD); // 깨끗한 배경
+  // --- 🎨 디자인 컬러 팔레트 ---
+  final Color _bgColor = const Color(0xFFF9FBFD);
   final Color _cardColor = Colors.white;
 
-  // 포인트 컬러: 보라색 (기존 색 유지하되, 강약 조절용 컬러 추가)
   final Color _primaryColor = const Color(0xFF5F33DF);
-  final Color _primaryLight = const Color(0xFFF0EBFF); // 아주 연한 보라 (배경용)
-  final Color _primaryGradientEnd = const Color(0xFF7A5AF8); // 그라데이션 끝색
+  final Color _primaryLight = const Color(0xFFF0EBFF);
+  final Color _primaryGradientEnd = const Color(0xFF7A5AF8);
 
-  final Color _textColor = const Color(0xFF1A1A1A); // 진한 검정 (가독성)
-  final Color _subTextColor = const Color(0xFF8E929C); // 세련된 회색
+  final Color _textColor = const Color(0xFF1A1A1A);
+  final Color _subTextColor = const Color(0xFF8E929C);
 
   @override
   void initState() {
@@ -64,7 +63,7 @@ class _RankingScreenState extends State<RankingScreen> {
     super.dispose();
   }
 
-  // --- 기능 로직 (절대 건드리지 않음) ---
+  // --- 기능 로직 유지 ---
   Future<void> _initLocation() async {
     try {
       final serviceEnabled = await Geolocator.isLocationServiceEnabled();
@@ -162,40 +161,38 @@ class _RankingScreenState extends State<RankingScreen> {
     );
   }
 
-  // --- 화면 UI (구조는 유지하되 디자인만 맛깔나게 변경) ---
+  // --- UI 구현 ---
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: _bgColor,
       appBar: AppBar(
         title: Text(
-            '즐겨찾기',
+            '추천 랭킹', // 제목 원복 완료
             style: TextStyle(
-              fontWeight: FontWeight.w800, // 폰트 두께 업
+              fontWeight: FontWeight.w800,
               color: _textColor,
               fontSize: 24,
-              letterSpacing: -0.5, // 자간 살짝 좁게 (트렌디함)
+              letterSpacing: -0.5,
             )
         ),
         backgroundColor: _bgColor,
         foregroundColor: _textColor,
         elevation: 0,
         centerTitle: false,
-        automaticallyImplyLeading: false, // 뒤로가기 버튼 있으면 제거 (필요시 true)
+        automaticallyImplyLeading: false,
       ),
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-          physics: const BouncingScrollPhysics(), // 아이폰 스타일 탄성 스크롤
+          physics: const BouncingScrollPhysics(),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _buildForm(), // 입력 폼
+              _buildForm(),
               const SizedBox(height: 24),
-              _buildRouteInfo(), // 경로 정보
+              _buildRouteInfo(),
               const SizedBox(height: 12),
-
-              // 상태에 따른 UI
               if (_loading)
                 Center(
                   child: Padding(
@@ -223,9 +220,9 @@ class _RankingScreenState extends State<RankingScreen> {
                     ),
                   )
                 else
-                  _buildResultList(), // 결과 리스트
+                  _buildResultList(),
 
-              const SizedBox(height: 100), // 하단 여백
+              const SizedBox(height: 100),
             ],
           ),
         ),
@@ -238,10 +235,10 @@ class _RankingScreenState extends State<RankingScreen> {
     return Container(
       decoration: BoxDecoration(
         color: _cardColor,
-        borderRadius: BorderRadius.circular(32), // 더 둥글게 (30 -> 32)
+        borderRadius: BorderRadius.circular(32),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF5F33DF).withOpacity(0.08), // 그림자 색상을 보라색 틴트로 살짝
+            color: const Color(0xFF5F33DF).withOpacity(0.08),
             blurRadius: 20,
             offset: const Offset(0, 8),
             spreadRadius: -4,
@@ -253,7 +250,6 @@ class _RankingScreenState extends State<RankingScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // 헤더
             Row(
               children: [
                 Text(
@@ -265,7 +261,7 @@ class _RankingScreenState extends State<RankingScreen> {
                   ),
                 ),
                 const Spacer(),
-                Icon(Icons.auto_awesome, color: _primaryColor, size: 20), // 포인트 아이콘
+                Icon(Icons.auto_awesome, color: _primaryColor, size: 20),
               ],
             ),
             const SizedBox(height: 6),
@@ -275,7 +271,6 @@ class _RankingScreenState extends State<RankingScreen> {
             ),
             const SizedBox(height: 24),
 
-            // 위치 입력부 (Stepper 느낌)
             _buildLocationRow(),
 
             const Padding(
@@ -283,7 +278,6 @@ class _RankingScreenState extends State<RankingScreen> {
               child: Divider(height: 1, thickness: 1, color: Color(0xFFF2F4F8)),
             ),
 
-            // 옵션 (반경 & 개수)
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -295,7 +289,6 @@ class _RankingScreenState extends State<RankingScreen> {
                       color: _textColor
                   ),
                 ),
-                // 드롭다운을 깔끔한 텍스트 버튼처럼
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                   decoration: BoxDecoration(
@@ -318,11 +311,10 @@ class _RankingScreenState extends State<RankingScreen> {
               ],
             ),
 
-            // 슬라이더 (커스텀 디자인)
             SliderTheme(
               data: SliderThemeData(
                 activeTrackColor: _primaryColor,
-                inactiveTrackColor: _primaryLight, // 비활성 트랙을 아주 연하게
+                inactiveTrackColor: _primaryLight,
                 thumbColor: Colors.white,
                 trackHeight: 6,
                 thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 10, elevation: 3),
@@ -339,7 +331,6 @@ class _RankingScreenState extends State<RankingScreen> {
 
             const SizedBox(height: 16),
 
-            // 필터 칩 (Soft Style)
             Row(
               children: [
                 Expanded(child: _buildSoftChip('⚡ 전기차', _includeEv, (v) => setState(() => _includeEv = v))),
@@ -352,13 +343,12 @@ class _RankingScreenState extends State<RankingScreen> {
 
             const SizedBox(height: 24),
 
-            // 메인 버튼 (그라데이션 & 쉐도우)
             Container(
               width: double.infinity,
               height: 54,
               decoration: BoxDecoration(
                 gradient: LinearGradient(
-                  colors: [_primaryColor, _primaryGradientEnd], // 보라색 그라데이션
+                  colors: [_primaryColor, _primaryGradientEnd],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                 ),
@@ -389,7 +379,7 @@ class _RankingScreenState extends State<RankingScreen> {
     );
   }
 
-  // 칩 디자인 (촌스러운 보라색 박스 X -> 세련된 파스텔 톤 O)
+  // 🔥 수정됨: 테두리를 없애고(Transparent) 배경색으로만 깔끔하게 구분
   Widget _buildSoftChip(String label, bool selected, ValueChanged<bool> onChanged) {
     return GestureDetector(
       onTap: () => onChanged(!selected),
@@ -398,17 +388,19 @@ class _RankingScreenState extends State<RankingScreen> {
         padding: const EdgeInsets.symmetric(vertical: 12),
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: selected ? _primaryLight : Colors.white, // 선택되면 연보라, 아니면 흰색
+          // 선택 시: 연한 보라 배경 / 선택 안됨: 흰 배경
+          color: selected ? _primaryLight : Colors.white,
           borderRadius: BorderRadius.circular(16),
+          // 선택 시: 테두리 투명 (깔끔함) / 선택 안됨: 연한 회색 테두리
           border: Border.all(
-            color: selected ? _primaryColor : const Color(0xFFE2E4E9), // 테두리
+            color: selected ? Colors.transparent : const Color(0xFFE2E4E9),
             width: 1.5,
           ),
         ),
         child: Text(
           label,
           style: TextStyle(
-            color: selected ? _primaryColor : _subTextColor, // 글자색
+            color: selected ? _primaryColor : _subTextColor,
             fontWeight: FontWeight.w700,
             fontSize: 13,
           ),
@@ -417,7 +409,6 @@ class _RankingScreenState extends State<RankingScreen> {
     );
   }
 
-  // 위치 선택 Row (디자인 개선)
   Widget _buildLocationRow() {
     return Column(
       children: [
@@ -430,7 +421,6 @@ class _RankingScreenState extends State<RankingScreen> {
             isHighlight: true
         ),
 
-        // 점선 연결 느낌의 데코레이션
         Padding(
           padding: const EdgeInsets.only(left: 20, top: 4, bottom: 4),
           child: Align(
@@ -445,7 +435,7 @@ class _RankingScreenState extends State<RankingScreen> {
 
         _buildLocationItem(
           icon: Icons.flag_rounded,
-          iconColor: const Color(0xFFFF4B4B), // 도착지는 붉은 계열 포인트
+          iconColor: const Color(0xFFFF4B4B),
           label: '도착지',
           value: _endLabel ?? '어디로 갈까요?',
           onTap: _pickDestination,
@@ -472,7 +462,6 @@ class _RankingScreenState extends State<RankingScreen> {
         padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
         child: Row(
           children: [
-            // 아이콘 박스
             Container(
               width: 42,
               height: 42,
@@ -509,7 +498,6 @@ class _RankingScreenState extends State<RankingScreen> {
     );
   }
 
-  // 경로 정보 요약 (카드 스타일)
   Widget _buildRouteInfo() {
     final route = _routeInfo;
     if (route == null) return const SizedBox.shrink();
@@ -522,10 +510,10 @@ class _RankingScreenState extends State<RankingScreen> {
         border: Border.all(color: _primaryColor.withOpacity(0.1)),
       ),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceAround, // 균등 배치
+        mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
           _buildInfoItem(Icons.route_rounded, '총 거리', '${route.distanceKm?.toStringAsFixed(1) ?? '-'} km'),
-          Container(height: 30, width: 1, color: _primaryColor.withOpacity(0.1)), // 구분선
+          Container(height: 30, width: 1, color: _primaryColor.withOpacity(0.1)),
           _buildInfoItem(Icons.timer_rounded, '예상 시간', '${route.estimatedDurationMin?.toStringAsFixed(0) ?? '-'} 분'),
         ],
       ),
@@ -548,7 +536,6 @@ class _RankingScreenState extends State<RankingScreen> {
     );
   }
 
-  // 결과 리스트 (기존 구조 유지, 디자인 디테일 업)
   Widget _buildResultList() {
     return ListView.builder(
       itemCount: _results.length,
@@ -571,13 +558,11 @@ class _RankingScreenState extends State<RankingScreen> {
                 offset: const Offset(0, 4),
               ),
             ],
-            // 1등은 테두리로 살짝 강조
             border: isTop ? Border.all(color: const Color(0xFFFFD700), width: 1.5) : null,
           ),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // 순위 뱃지
               Container(
                 width: 32,
                 height: 32,
@@ -596,8 +581,6 @@ class _RankingScreenState extends State<RankingScreen> {
                 ),
               ),
               const SizedBox(width: 16),
-
-              // 내용
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -619,7 +602,6 @@ class _RankingScreenState extends State<RankingScreen> {
                       style: TextStyle(color: _subTextColor, fontSize: 13, fontWeight: FontWeight.w500),
                     ),
                     const SizedBox(height: 12),
-                    // 태그들
                     Wrap(
                       spacing: 6,
                       runSpacing: 4,
@@ -632,8 +614,6 @@ class _RankingScreenState extends State<RankingScreen> {
                   ],
                 ),
               ),
-
-              // 즐겨찾기 별 (보라색 포인트)
               Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
