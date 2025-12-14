@@ -497,20 +497,22 @@ class _MapScreenState extends State<MapScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   _buildSearchBar(),
-                  const SizedBox(height: 12),
-                  FilterBar(
-                    showH2: _mapController.showH2,
-                    showEv: _mapController.showEv,
-                    showParking: _mapController.showParking,
-                    h2Color: _h2MarkerBaseColor,
-                    evColor: _evMarkerBaseColor,
-                    parkingColor: _parkingMarkerBaseColor,
-                    onToggleH2: _mapController.toggleH2,
-                    onToggleEv: _mapController.toggleEv,
-                    onToggleParking: _mapController.toggleParking,
-                  ),
-                  const SizedBox(height: 8),
-                  _buildNearbyFilterButton(),
+                  if (!_isSearchFocused) ...[
+                    const SizedBox(height: 12),
+                    FilterBar(
+                      showH2: _mapController.showH2,
+                      showEv: _mapController.showEv,
+                      showParking: _mapController.showParking,
+                      h2Color: _h2MarkerBaseColor,
+                      evColor: _evMarkerBaseColor,
+                      parkingColor: _parkingMarkerBaseColor,
+                      onToggleH2: _mapController.toggleH2,
+                      onToggleEv: _mapController.toggleEv,
+                      onToggleParking: _mapController.toggleParking,
+                    ),
+                    const SizedBox(height: 8),
+                    _buildNearbyFilterButton(),
+                  ],
                 ],
               ),
             ),
@@ -530,15 +532,22 @@ class _MapScreenState extends State<MapScreen> {
       ),
       floatingActionButton: Padding(
         padding: const EdgeInsets.only(bottom: 24, right: 4),
-        child: FloatingActionButton(
-          onPressed: _isManualRefreshing ? null : _refreshStations,
-          child: _isManualRefreshing
-              ? const SizedBox(
-            width: 20,
-            height: 20,
-            child: CircularProgressIndicator(strokeWidth: 2.4),
-          )
-              : const Icon(Icons.refresh),
+        child: IgnorePointer(
+          ignoring: _isSearchFocused,
+          child: AnimatedOpacity(
+            duration: const Duration(milliseconds: 160),
+            opacity: _isSearchFocused ? 0.0 : 1.0,
+            child: FloatingActionButton(
+              onPressed: _isManualRefreshing ? null : _refreshStations,
+              child: _isManualRefreshing
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2.4),
+                    )
+                  : const Icon(Icons.refresh),
+            ),
+          ),
         ),
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
