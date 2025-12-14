@@ -168,7 +168,14 @@ class _MapApp extends StatelessWidget {
 
 /// 네이버 지도를 렌더링하면서 충전소 데이터를 보여주는 메인 스크린.
 class MapScreen extends StatefulWidget {
-  const MapScreen({super.key});
+  const MapScreen({
+    super.key,
+    this.initialFocusStationId,
+    this.openPopupOnInitialFocus = true,
+  });
+
+  final String? initialFocusStationId;
+  final bool openPopupOnInitialFocus;
 
   @override
   State<MapScreen> createState() => _MapScreenState();
@@ -192,6 +199,7 @@ class _MapScreenState extends State<MapScreen> {
   VideoPlayerController? _loadingVideoController;
   bool _isLoadingVideoReady = false;
   bool _wasLoading = false;
+  bool _initialFocusResolved = false;
 
   // 검색창 컨트롤러
   final TextEditingController _searchController = TextEditingController();
@@ -475,6 +483,7 @@ class _MapScreenState extends State<MapScreen> {
       unawaited(_refreshDynamicIslandSuggestions());
     }
     if (mounted) setState(() {});
+    unawaited(_tryApplyInitialFocus());
   }
 
   // --- build & UI 구성 ---
@@ -1627,14 +1636,104 @@ class _MapScreenState extends State<MapScreen> {
     }
   }
 
-  Future<void> _focusTo(double lat, double lng) async {
+  Future<void> _focusTo(double lat, double lng, {double zoom = 14}) async {
     final controller = _controller;
     if (controller == null) return;
     await controller.updateCamera(
       NCameraUpdate.fromCameraPosition(
-        NCameraPosition(target: NLatLng(lat, lng), zoom: 14),
+        NCameraPosition(target: NLatLng(lat, lng), zoom: zoom),
       ),
     );
+  }
+
+  Future<void> _tryApplyInitialFocus() async {
+    if (_initialFocusResolved) return;
+    final stationId = widget.initialFocusStationId?.trim();
+    if (stationId == null || stationId.isEmpty) {
+      _initialFocusResolved = true;
+      return;
+    }
+    if (!_isMapLoaded || _controller == null) return;
+
+    H2Station? h2;
+    for (final station in _h2StationsWithCoordinates) {
+      if (station.stationId == stationId) {
+        h2 = station;
+        break;
+      }
+    }
+    if (h2 != null) {
+      _initialFocusResolved = true;
+      await _focusTo(
+        h2.latitude!,
+        h2.longitude!,
+        zoom: _clusterDisableZoom + 1,
+      );
+      if (widget.openPopupOnInitialFocus) {
+        unawaited(
+          Future<void>.delayed(const Duration(milliseconds: 180), () async {
+            if (!mounted) return;
+            _showH2StationPopup(h2!);
+          }),
+        );
+      }
+      return;
+    }
+
+    EVStation? ev;
+    for (final station in _evStationsWithCoordinates) {
+      if (station.stationId == stationId) {
+        ev = station;
+        break;
+      }
+    }
+    if (ev != null) {
+      _initialFocusResolved = true;
+      await _focusTo(
+        ev.latitude!,
+        ev.longitude!,
+        zoom: _clusterDisableZoom + 1,
+      );
+      if (widget.openPopupOnInitialFocus) {
+        unawaited(
+          Future<void>.delayed(const Duration(milliseconds: 180), () async {
+            if (!mounted) return;
+            _showEvStationPopup(ev!);
+          }),
+        );
+      }
+      return;
+    }
+
+    ParkingLot? lot;
+    for (final parking in _parkingLotsWithCoordinates) {
+      if (parking.id == stationId) {
+        lot = parking;
+        break;
+      }
+    }
+    if (lot != null) {
+      _initialFocusResolved = true;
+      await _focusTo(
+        lot.latitude!,
+        lot.longitude!,
+        zoom: _clusterDisableZoom + 1,
+      );
+      if (widget.openPopupOnInitialFocus) {
+        unawaited(
+          Future<void>.delayed(const Duration(milliseconds: 180), () async {
+            if (!mounted) return;
+            _showParkingLotPopup(lot!);
+          }),
+        );
+      }
+      return;
+    }
+
+    if (!_mapController.isLoading) {
+      _initialFocusResolved = true;
+      _showSnack('즐겨찾기 위치를 찾을 수 없어요.');
+    }
   }
 
   void _showSnack(String message) {
@@ -1767,11 +1866,13 @@ class _MapScreenState extends State<MapScreen> {
   void _handleMapReady(NaverMapController controller) {
     _controller = controller;
     unawaited(_rebuildClusterIndex());
+    unawaited(_tryApplyInitialFocus());
   }
 
   void _handleMapLoaded() {
     _isMapLoaded = true;
     unawaited(_rebuildClusterIndex());
+    unawaited(_tryApplyInitialFocus());
   }
 
   void _handleCameraChange(NCameraUpdateReason reason, bool isAnimated) {
