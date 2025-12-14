@@ -49,6 +49,7 @@ class ParkingLot {
 
     final totalSpaces = _parseInt(
       json['totalSpaces'] ??
+          json['parkingSpaces'] ??
           json['capacity'] ??
           json['totalCount'] ??
           json['prkcmprt'] ??
@@ -81,7 +82,10 @@ class ParkingLot {
 
     return ParkingLot(
       id: _stringOrFallback(
-        json['id'] ??
+        json['managementNumber'] ??
+            json['managementNo'] ??
+            json['management_number'] ??
+            json['id'] ??
             json['parkingLotId'] ??
             json['lotId'] ??
             json['parkingId'] ??
@@ -182,6 +186,7 @@ class ParkingLot {
       addTimeMinutes: _parseInt(
         json['addTime'] ??
             json['addTimeRates'] ??
+            json['additionalUnitTime'] ??
             json['addUnitTime'] ??
             json['extraTime'] ??
             fee?['addTime'] ??
@@ -190,6 +195,7 @@ class ParkingLot {
       addFee: _parseInt(
         json['addFee'] ??
             json['addRates'] ??
+            json['additionalUnitFee'] ??
             json['addUnitCharge'] ??
             json['extraFee'] ??
             fee?['addFee'] ??
@@ -198,6 +204,7 @@ class ParkingLot {
       dailyMaxFee: _parseInt(
         json['dayMaxFee'] ??
             json['dayMaximum'] ??
+            json['dailyTicketFee'] ??
             json['dailyMaxAmount'] ??
             json['maximumFee'] ??
             fee?['dayMaxFee'] ??

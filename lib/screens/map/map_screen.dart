@@ -3395,7 +3395,12 @@ class _MapScreenState extends State<MapScreen> {
           ),
         );
       }
-      if (mounted) _showPaymentSuccessDialog();
+      if (mounted) {
+        _showPaymentSuccessDialog(
+          targetType: reservation.targetType,
+          itemName: reservation.itemName,
+        );
+      }
       return;
     }
 
@@ -3680,7 +3685,9 @@ class _MapScreenState extends State<MapScreen> {
 
       if (res.statusCode == 200) {
         if (mounted) {
-          _showPaymentSuccessDialog();
+          _showPaymentSuccessDialog(
+            targetType: _inferTargetTypeFromOrderId(orderId),
+          );
         }
       } else {
         _showSnack('결제 승인 실패 (${res.statusCode}) ${_shorten(res.body)}');
@@ -3692,7 +3699,43 @@ class _MapScreenState extends State<MapScreen> {
     }
   }
 
-  void _showPaymentSuccessDialog() {
+  String? _inferTargetTypeFromOrderId(String orderId) {
+    final trimmed = orderId.trim();
+    if (trimmed.isEmpty) return null;
+    final prefix = trimmed.split('-').first.trim().toLowerCase();
+    if (prefix == 'parking' || prefix == 'ev' || prefix == 'h2') {
+      return prefix;
+    }
+    return null;
+  }
+
+  void _showPaymentSuccessDialog({
+    String? targetType,
+    String? itemName,
+  }) {
+    final normalizedType = targetType?.trim().toLowerCase();
+    final normalizedItemName = itemName?.trim();
+    final showItemName = normalizedItemName != null && normalizedItemName.isNotEmpty;
+
+    String? thanksTarget;
+    switch (normalizedType) {
+      case 'parking':
+        thanksTarget = '주차장을';
+        break;
+      case 'ev':
+        thanksTarget = '전기차 충전을';
+        break;
+      case 'h2':
+        thanksTarget = '수소 충전을';
+        break;
+      default:
+        thanksTarget = null;
+    }
+
+    final message = thanksTarget == null
+        ? '결제가 성공적으로 완료되었습니다.\n이용해 주셔서 감사합니다!'
+        : '결제가 성공적으로 완료되었습니다.\n$thanksTarget 이용해 주셔서 감사합니다!';
+
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -3747,10 +3790,23 @@ class _MapScreenState extends State<MapScreen> {
                 ),
               ),
               const SizedBox(height: 12),
-              const Text(
-                '결제가 성공적으로 완료되었습니다.\n주차장을 이용해 주셔서 감사합니다!',
+              if (showItemName) ...[
+                Text(
+                  normalizedItemName!,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF374151),
+                    height: 1.4,
+                  ),
+                ),
+                const SizedBox(height: 10),
+              ],
+              Text(
+                message,
                 textAlign: TextAlign.center,
-                style: TextStyle(
+                style: const TextStyle(
                   fontSize: 15,
                   color: Color(0xFF6B7280),
                   height: 1.5,
