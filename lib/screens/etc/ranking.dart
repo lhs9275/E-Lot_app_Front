@@ -230,7 +230,7 @@ class _RankingScreenState extends State<RankingScreen> {
           ),
         ),
       ),
-      bottomNavigationBar: const MainBottomNavBar(currentIndex: 1),
+      bottomNavigationBar: const MainBottomNavBar(currentIndex: 0),
     );
   }
 

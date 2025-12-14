@@ -22,10 +22,12 @@ import 'widgets/search_bar.dart';
 import '../../models/ev_station.dart';
 import '../../models/h2_station.dart';
 import '../../models/parking_lot.dart';
+import '../../models/reservation.dart';
 import '../../services/ev_station_api_service.dart';
 import '../../services/h2_station_api_service.dart';
 import '../etc/review_list.dart';
 import '../../services/parking_lot_api_service.dart';
+import '../../services/reservation_api_service.dart';
 import '../bottom_navbar.dart'; // ✅ 공통 하단 네비게이션 바
 import '../etc/review.dart'; // ⭐ 리뷰 작성 페이지
 import '../payment/kakao_pay_webview.dart'; // 카카오페이 WebView
@@ -140,6 +142,14 @@ Future<void> main() async {
     parkingLotApi = ParkingLotApiService(baseUrl: parkingBaseUrl);
   }
 
+  final backendBaseUrl =
+      dotenv.env['BACKEND_BASE_URL'] ?? parkingBaseUrl ?? evBaseUrl ?? h2BaseUrl;
+  if (backendBaseUrl == null || backendBaseUrl.isEmpty) {
+    debugPrint('❌ BACKEND_BASE_URL 이 .env에 없습니다.');
+  } else {
+    configureReservationApi(baseUrl: backendBaseUrl);
+  }
+
   runApp(const _MapApp());
 }
 
@@ -167,11 +177,9 @@ class MapScreen extends StatefulWidget {
 /// 지도 상호작용, 충전소 호출 및 즐겨찾기를 모두 관리하는 상태 객체.
 class _MapScreenState extends State<MapScreen> {
   // --- 상태 필드들 ---
-  final MapController _mapController = MapController(
-    h2Api: h2StationApi,
-    evApi: evStationApi,
-    parkingApi: parkingLotApi,
-  );
+  static MapController? _cachedMapController;
+  late final MapController _mapController = _cachedMapController ??=
+      MapController(h2Api: h2StationApi, evApi: evStationApi, parkingApi: parkingLotApi);
   NaverMapController? _controller;
   NOverlayImage? _clusterIcon;
   SuperclusterMutable<MapPoint>? _clusterIndex;
@@ -300,7 +308,9 @@ class _MapScreenState extends State<MapScreen> {
   void initState() {
     super.initState();
     _mapController.addListener(_onMapControllerChanged);
-    _mapController.loadAllStations();
+    if (_mapController.isLoading) {
+      _mapController.loadAllStations();
+    }
     _initLoadingVideo();
     _searchFocusNode.addListener(() {
       if (!mounted) return;
@@ -323,7 +333,6 @@ class _MapScreenState extends State<MapScreen> {
     _renderDebounceTimer?.cancel();
     _linkSub?.cancel();
     _mapController.removeListener(_onMapControllerChanged);
-    _mapController.dispose();
     _loadingVideoController?.dispose();
     super.dispose();
   }
@@ -544,7 +553,7 @@ class _MapScreenState extends State<MapScreen> {
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
 
       /// ✅ 하단 네비게이션 바 (지도 탭이므로 index = 0)
-      bottomNavigationBar: const MainBottomNavBar(currentIndex: 0),
+      bottomNavigationBar: const MainBottomNavBar(currentIndex: -1),
     );
   }
 
@@ -2946,9 +2955,14 @@ class _MapScreenState extends State<MapScreen> {
       detail: estimate,
     );
     if (!confirmed) return;
-    await _startPayment(
+    await _startReservationPayment(
+      targetType: 'ev',
+      targetId: station.stationId,
       itemName: '${station.stationName} ${qty.toStringAsFixed(1)}kWh',
       amount: amount,
+      moveTo: station.latitude != null && station.longitude != null
+          ? NLatLng(station.latitude!, station.longitude!)
+          : null,
     );
   }
 
@@ -2979,9 +2993,14 @@ class _MapScreenState extends State<MapScreen> {
       detail: estimate,
     );
     if (!confirmed) return;
-    await _startPayment(
+    await _startReservationPayment(
+      targetType: 'h2',
+      targetId: station.stationId,
       itemName: '${station.stationName} ${qty.toStringAsFixed(1)}kg',
       amount: amount,
+      moveTo: station.latitude != null && station.longitude != null
+          ? NLatLng(station.latitude!, station.longitude!)
+          : null,
     );
   }
 
@@ -3076,11 +3095,256 @@ class _MapScreenState extends State<MapScreen> {
       detail: detail,
     );
     if (!confirmed) return;
-    await _startPayment(
-      itemName:
-          '${lot.name} ${_formatTimeRange(reservation.start, reservation.end)} (${_formatDate(reservation.start)})',
+    await _startReservationPayment(
+      targetType: 'parking',
+      targetId: lot.id,
+      itemName: '주차장 ${lot.name} 예약 (${reservation.hours}시간)',
       amount: amount,
+      moveTo: lot.latitude != null && lot.longitude != null
+          ? NLatLng(lot.latitude!, lot.longitude!)
+          : null,
     );
+  }
+
+  static const Duration _reservationPollInterval = Duration(seconds: 12);
+  static const int _reservationPollMaxAttempts = 23;
+
+  String _buildReservationOrderId({
+    required String targetType,
+    required String targetId,
+  }) {
+    final trimmedTargetId = targetId.trim();
+    final safeTargetId =
+        trimmedTargetId.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
+    final timestamp = DateTime.now().millisecondsSinceEpoch.toString();
+    final maxTargetLength = 60 - targetType.length - timestamp.length - 2;
+    final clipped = maxTargetLength > 0 && safeTargetId.length > maxTargetLength
+        ? safeTargetId.substring(0, maxTargetLength)
+        : safeTargetId;
+    return '$targetType-$clipped-$timestamp';
+  }
+
+  String _reservationDeepLink(String host, String reservationId) {
+    final query = Uri(queryParameters: {'reservationId': reservationId}).query;
+    return '$_appRedirectScheme://$host?$query';
+  }
+
+  String _reservationBridgeUrl(
+    String host,
+    String reservationId, {
+    String? redirectBase,
+  }) {
+    final target = _reservationDeepLink(host, reservationId);
+    final encodedTarget = Uri.encodeComponent(target);
+    final String redirectQuery =
+        redirectBase == null || redirectBase.trim().isEmpty
+            ? ''
+            : '&redirect=${Uri.encodeComponent(redirectBase.trim())}';
+    return '$_paymentBridgeBase?target=$encodedTarget$redirectQuery';
+  }
+
+  Future<void> _startReservationPayment({
+    required String targetType,
+    required String targetId,
+    required String itemName,
+    required int amount,
+    NLatLng? moveTo,
+  }) async {
+    if (_isPaying) return;
+    setState(() => _isPaying = true);
+    try {
+      final token = await TokenStorage.getAccessToken();
+      if (token == null || token.isEmpty) {
+        _showSnack('로그인 후 결제할 수 있습니다.');
+        return;
+      }
+
+      final reservationCode = _buildReservationOrderId(
+        targetType: targetType,
+        targetId: targetId,
+      );
+
+      final approvalUrl =
+          _reservationBridgeUrl('payment-complete', reservationCode);
+      final cancelUrl = _reservationBridgeUrl(
+        'payment-cancel',
+        reservationCode,
+        redirectBase: '$_backendBaseUrl/api/payments/kakao/cancel',
+      );
+      final failUrl = _reservationBridgeUrl(
+        'payment-fail',
+        reservationCode,
+        redirectBase: '$_backendBaseUrl/api/payments/kakao/fail',
+      );
+
+      final ready = await reservationApi.readyKakaoPay(
+        orderId: reservationCode,
+        itemName: itemName,
+        totalAmount: amount,
+        approvalUrl: approvalUrl,
+        cancelUrl: cancelUrl,
+        failUrl: failUrl,
+      );
+
+      if (!mounted) return;
+
+      final result = await Navigator.of(context).push<Map<String, dynamic>>(
+        MaterialPageRoute(
+          builder: (_) => KakaoPayWebView(
+            paymentUrl: ready.paymentUrl,
+            orderId: ready.orderId,
+            allowBridgeNavigation: true,
+          ),
+        ),
+      );
+
+      final resultType = result?['result'] as String?;
+      final source = result?['source'] as String?;
+      final fromDeepLink = source == 'deeplink';
+
+      if (resultType == 'cancel' && fromDeepLink) {
+        try {
+          await reservationApi.cancelReservation(reservationCode);
+        } catch (_) {}
+      }
+      if (resultType == 'fail' && fromDeepLink) {
+        try {
+          await reservationApi.markPaymentFailed(reservationCode);
+        } catch (_) {}
+      }
+
+      final reservation = await _resolveReservationAfterPayment(
+        reservationCode,
+        shouldPoll: result == null ||
+            resultType == null ||
+            source == 'user_close' ||
+            (resultType == 'success'),
+      );
+
+      if (reservation == null) {
+        _showSnack('결제 상태를 확인할 수 없습니다. 내 예약에서 확인해 주세요.');
+        return;
+      }
+
+      await _handleReservationOutcome(reservation, moveTo: moveTo);
+    } catch (e) {
+      _showSnack('결제 처리 중 오류가 발생했습니다: $e');
+    } finally {
+      if (mounted) setState(() => _isPaying = false);
+    }
+  }
+
+  Future<Reservation?> _resolveReservationAfterPayment(
+    String reservationCode, {
+    required bool shouldPoll,
+  }) async {
+    Reservation? current;
+    try {
+      current = await reservationApi.getReservation(reservationCode);
+    } catch (_) {
+      current = null;
+    }
+
+    final isFinal = current != null &&
+        (current!.isFinalStatus ||
+            current.isCancelled ||
+            current.isFailed ||
+            current.reservationStatus == 'PAID');
+    if (isFinal) return current;
+
+    if (!shouldPoll) return current;
+
+    return _withBlockingDialog(
+      message: '결제 상태 확인 중…',
+      task: () => _pollReservationStatus(reservationCode),
+    );
+  }
+
+  Future<Reservation?> _pollReservationStatus(String reservationCode) async {
+    for (var attempt = 0; attempt < _reservationPollMaxAttempts; attempt++) {
+      try {
+        final reservation = await reservationApi.getReservation(reservationCode);
+        if (reservation.isFinalStatus ||
+            reservation.isCancelled ||
+            reservation.isFailed ||
+            reservation.reservationStatus == 'PAID') {
+          return reservation;
+        }
+      } catch (_) {
+        // ignore and retry
+      }
+      await Future.delayed(_reservationPollInterval);
+    }
+    return null;
+  }
+
+  Future<T> _withBlockingDialog<T>({
+    required String message,
+    required Future<T> Function() task,
+  }) async {
+    if (!mounted) return task();
+    final navigator = Navigator.of(context, rootNavigator: true);
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => PopScope(
+        canPop: false,
+        child: AlertDialog(
+          content: Row(
+            children: [
+              const SizedBox(
+                width: 22,
+                height: 22,
+                child: CircularProgressIndicator(strokeWidth: 2.6),
+              ),
+              const SizedBox(width: 14),
+              Expanded(child: Text(message)),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    try {
+      return await task();
+    } finally {
+      if (mounted && navigator.canPop()) {
+        navigator.pop();
+      }
+    }
+  }
+
+  Future<void> _handleReservationOutcome(
+    Reservation reservation, {
+    NLatLng? moveTo,
+  }) async {
+    final status = reservation.reservationStatus ?? '';
+    if (status == 'PAID') {
+      if (moveTo != null) {
+        _controller?.updateCamera(
+          NCameraUpdate.fromCameraPosition(
+            NCameraPosition(target: moveTo, zoom: 16),
+          ),
+        );
+      }
+      if (mounted) _showPaymentSuccessDialog();
+      return;
+    }
+
+    if (status == 'CANCELLED' || reservation.paymentStatus == 'CANCELLED') {
+      _showSnack('결제가 취소되었습니다.');
+      return;
+    }
+    if (reservation.paymentStatus == 'FAILED') {
+      _showSnack('결제에 실패했습니다.');
+      return;
+    }
+    if (status == 'EXPIRED') {
+      _showSnack('결제가 만료되었습니다. 다시 시도해 주세요.');
+      return;
+    }
+
+    _showSnack('결제 상태: ${reservation.reservationStatusLabel ?? status}');
   }
 
   Future<void> _startPayment({
@@ -3261,7 +3525,36 @@ class _MapScreenState extends State<MapScreen> {
     } catch (_) {
       return;
     }
-    if (uri.scheme != _appRedirectScheme || uri.host != 'pay') return;
+    if (uri.scheme != _appRedirectScheme) return;
+
+    if (uri.host == 'payment-complete' ||
+        uri.host == 'payment-cancel' ||
+        uri.host == 'payment-fail') {
+      final reservationCode =
+          uri.queryParameters['reservationId'] ?? uri.queryParameters['orderId'];
+      if (reservationCode == null || reservationCode.isEmpty) return;
+
+      try {
+        if (uri.host == 'payment-cancel') {
+          await reservationApi.cancelReservation(reservationCode);
+        } else if (uri.host == 'payment-fail') {
+          await reservationApi.markPaymentFailed(reservationCode);
+        }
+      } catch (_) {}
+
+      final reservation = await _resolveReservationAfterPayment(
+        reservationCode,
+        shouldPoll: true,
+      );
+      if (reservation == null) {
+        _showSnack('결제 상태를 확인할 수 없습니다. 내 예약에서 확인해 주세요.');
+        return;
+      }
+      await _handleReservationOutcome(reservation);
+      return;
+    }
+
+    if (uri.host != 'pay') return;
     if (uri.pathSegments.isEmpty) return;
 
     final result = uri.pathSegments.first;

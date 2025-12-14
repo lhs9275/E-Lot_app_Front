@@ -5,10 +5,12 @@ import 'package:flutter/material.dart';
 import 'map.dart';
 import 'user/favorite.dart';
 import 'user/mypage.dart';
+import 'user/my_reservations.dart';
 import 'etc/ranking.dart';
 
 class MainBottomNavBar extends StatelessWidget {
-  /// 현재 선택된 탭 index (0: 추천랭킹, 1: 즐겨찾기, 2: 기존메뉴, 3: 내 정보)
+  /// 현재 선택된 탭 index (0: 추천랭킹, 1: 즐겨찾기, 2: 내 예약, 3: 내 정보)
+  /// 홈(지도)은 중앙 캐릭터 버튼이며 currentIndex = -1로 표기한다.
   final int currentIndex;
 
   const MainBottomNavBar({
@@ -17,6 +19,7 @@ class MainBottomNavBar extends StatelessWidget {
   });
 
   final Color _iconGrey = const Color(0xFFB5B5C3); // 선택 안 된 아이콘 색
+  final Color _selectedPurple = const Color(0xFF5F33DF);
 
   void _handleTap(BuildContext context, int index) {
     Widget? target;
@@ -28,7 +31,7 @@ class MainBottomNavBar extends StatelessWidget {
         target = const FavoritesPage();
         break;
       case 2: // ? ?? (???)
-        target = null;
+        target = const MyReservationsScreen();
         break;
       case 3: // ?????
         target = const MyPageScreen();
@@ -126,8 +129,7 @@ class MainBottomNavBar extends StatelessWidget {
         child: Icon(
           isSelected ? selectedIcon : icon, // 선택되면 꽉 찬 아이콘, 아니면 테두리
           size: 28, // 아이콘 크기 조금 키움
-          // 전체를 같은 색으로 표시해 선택 강조를 없앰
-          color: _iconGrey,
+          color: isSelected ? _selectedPurple : _iconGrey,
         ),
       ),
     );
@@ -152,7 +154,7 @@ class MainBottomNavBar extends StatelessWidget {
   }
 
   void _navigateHome(BuildContext context) {
-    if (currentIndex == 0) return; // 이미 홈이면 무시
+    if (currentIndex == -1) return; // 이미 홈이면 무시
     Navigator.of(context).pushAndRemoveUntil(
       MaterialPageRoute(builder: (_) => const MapScreen()),
       (_) => false,

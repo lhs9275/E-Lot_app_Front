@@ -7,11 +7,13 @@ import 'package:webview_flutter/webview_flutter.dart';
 class KakaoPayWebView extends StatefulWidget {
   final String paymentUrl;
   final String orderId;
+  final bool allowBridgeNavigation;
 
   const KakaoPayWebView({
     super.key,
     required this.paymentUrl,
     required this.orderId,
+    this.allowBridgeNavigation = false,
   });
 
   @override
@@ -57,6 +59,9 @@ class _KakaoPayWebViewState extends State<KakaoPayWebView> {
             // approval_url (pay/bridge 또는 api/payments/kakao/approve) 감지
             if (url.contains('/pay/bridge') ||
                 url.contains('/api/payments/kakao/approve')) {
+              if (widget.allowBridgeNavigation) {
+                return NavigationDecision.navigate;
+              }
               _handleApprovalUrl(url);
               return NavigationDecision.prevent;
             }
@@ -64,12 +69,12 @@ class _KakaoPayWebViewState extends State<KakaoPayWebView> {
             // 취소/실패 URL 감지
             if (url.contains('/api/payments/kakao/cancel') ||
                 url.contains('pay/cancel')) {
-              Navigator.of(context).pop({'result': 'cancel'});
+              Navigator.of(context).pop({'result': 'cancel', 'source': 'url'});
               return NavigationDecision.prevent;
             }
             if (url.contains('/api/payments/kakao/fail') ||
                 url.contains('pay/fail')) {
-              Navigator.of(context).pop({'result': 'fail'});
+              Navigator.of(context).pop({'result': 'fail', 'source': 'url'});
               return NavigationDecision.prevent;
             }
 
@@ -117,12 +122,45 @@ class _KakaoPayWebViewState extends State<KakaoPayWebView> {
           'result': 'success',
           'orderId': orderId,
           'pgToken': pgToken,
+          'source': 'deeplink',
         });
       } else if (path == 'cancel') {
-        Navigator.of(context).pop({'result': 'cancel'});
+        Navigator.of(context).pop({'result': 'cancel', 'source': 'deeplink'});
       } else if (path == 'fail') {
-        Navigator.of(context).pop({'result': 'fail'});
+        Navigator.of(context).pop({'result': 'fail', 'source': 'deeplink'});
       }
+      return;
+    }
+
+    if (uri.host == 'payment-complete') {
+      Navigator.of(context).pop({
+        'result': 'success',
+        'reservationId':
+            uri.queryParameters['reservationId'] ?? uri.queryParameters['orderId'],
+        'orderId': orderId,
+        'source': 'deeplink',
+      });
+      return;
+    }
+    if (uri.host == 'payment-cancel') {
+      Navigator.of(context).pop({
+        'result': 'cancel',
+        'reservationId':
+            uri.queryParameters['reservationId'] ?? uri.queryParameters['orderId'],
+        'orderId': orderId,
+        'source': 'deeplink',
+      });
+      return;
+    }
+    if (uri.host == 'payment-fail') {
+      Navigator.of(context).pop({
+        'result': 'fail',
+        'reservationId':
+            uri.queryParameters['reservationId'] ?? uri.queryParameters['orderId'],
+        'orderId': orderId,
+        'source': 'deeplink',
+      });
+      return;
     }
   }
 
@@ -151,7 +189,10 @@ class _KakaoPayWebViewState extends State<KakaoPayWebView> {
         title: const Text('카카오페이 결제'),
         leading: IconButton(
           icon: const Icon(Icons.close),
-          onPressed: () => Navigator.of(context).pop({'result': 'cancel'}),
+          onPressed: () => Navigator.of(context).pop({
+            'result': 'cancel',
+            'source': 'user_close',
+          }),
         ),
       ),
       body: Stack(

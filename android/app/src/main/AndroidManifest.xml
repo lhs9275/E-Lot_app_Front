@@ -37,7 +37,7 @@
                 <action android:name="android.intent.action.VIEW"/>
                 <category android:name="android.intent.category.DEFAULT"/>
                 <category android:name="android.intent.category.BROWSABLE"/>
-                <data android:scheme="psp2fn" android:host="pay" android:pathPrefix="/"/>
+                <data android:scheme="psp2fn"/>
             </intent-filter>
         </activity>
         <!-- Receive Kakao auth-code redirect in Kakao SDK activity -->
