@@ -173,7 +173,8 @@ class _MapScreenState extends State<MapScreen> {
     parkingApi: parkingLotApi,
   );
   NaverMapController? _controller;
-  NOverlayImage? _clusterIcon;
+  final Map<int, NOverlayImage> _clusterIconsByBorderColor = {};
+  bool _isBuildingClusterIcons = false;
   SuperclusterMutable<MapPoint>? _clusterIndex;
   Timer? _renderDebounceTimer;
   bool _isRenderingClusters = false;
@@ -249,6 +250,13 @@ class _MapScreenState extends State<MapScreen> {
   static const Color _clusterBaseColor = Color(0xFF111827); // 중성 짙은 슬레이트
   static const double _clusterDisableZoom = 15;
   static const int _clusterMinCountForClustering = 20; // 화면 내 포인트가 이 이하면 클러스터 해제
+  static const Color _clusterBorderHighCountColor = Color(0xFFEF4444); // 빨강
+  static const List<Color> _clusterBorderPalette = [
+    _h2MarkerBaseColor, // 낮은 수: 파랑
+    _evMarkerBaseColor, // 중간 수: 초록
+    _parkingMarkerBaseColor, // 높은 수: 주황
+    _clusterBorderHighCountColor, // 매우 높은 수: 빨강
+  ];
   static const List<String> _evApiTypes = ['ALL', 'CURRENT', 'OPERATION'];
   static const List<String> _h2ApiTypes = ['ALL', 'CURRENT', 'OPERATION'];
   static const List<String> _defaultH2Specs = ['700', '350'];
@@ -312,7 +320,7 @@ class _MapScreenState extends State<MapScreen> {
       }
     });
     _initDeepLinks();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _prepareClusterIcon());
+    WidgetsBinding.instance.addPostFrameCallback((_) => _prepareClusterIcons());
   }
 
   @override
@@ -328,46 +336,53 @@ class _MapScreenState extends State<MapScreen> {
     super.dispose();
   }
 
-  Future<void> _prepareClusterIcon() async {
+  Future<void> _prepareClusterIcons() async {
+    if (_isBuildingClusterIcons) return;
+    _isBuildingClusterIcons = true;
     try {
-      // ?? ?? ???(??? ????? ?????? ??)
-      final icon = await NOverlayImage.fromWidget(
-        widget: Container(
-          width: 44,
-          height: 44,
-          decoration: BoxDecoration(
-            gradient: const LinearGradient(
-              colors: [Color(0xFF0EA5E9), Color(0xFF2563EB)],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
+      final newIcons = <int, NOverlayImage>{};
+      for (final borderColor in _clusterBorderPalette) {
+        if (_clusterIconsByBorderColor.containsKey(borderColor.value)) continue;
+        final icon = await NOverlayImage.fromWidget(
+          widget: Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: borderColor,
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.16),
+                  blurRadius: 10,
+                  offset: const Offset(0, 5),
+                ),
+              ],
             ),
-            shape: BoxShape.circle,
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.16),
-                blurRadius: 10,
-                offset: const Offset(0, 5),
-              ),
-            ],
-          ),
-          child: Center(
-            child: Container(
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(
-                color: Colors.white,
-                shape: BoxShape.circle,
-                border: Border.all(color: Colors.white, width: 0.6),
+            child: Center(
+              child: Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: Colors.white, width: 0.6),
+                ),
               ),
             ),
           ),
-        ),
-        context: context,
-      );
-      if (!mounted) return;
-      setState(() => _clusterIcon = icon);
+          context: context,
+        );
+        newIcons[borderColor.value] = icon;
+      }
+      if (!mounted || newIcons.isEmpty) return;
+      setState(() => _clusterIconsByBorderColor.addAll(newIcons));
+      if (_isMapLoaded && _clusterIndex != null) {
+        _scheduleRenderClusters(immediate: true);
+      }
     } catch (e) {
       debugPrint('Cluster icon build failed: $e');
+    } finally {
+      _isBuildingClusterIcons = false;
     }
   }
 
@@ -2010,19 +2025,29 @@ class _MapScreenState extends State<MapScreen> {
     }
   }
 
+  Color _clusterBorderColor(int count) {
+    if (count >= 200) return _clusterBorderHighCountColor;
+    if (count >= 50) return _parkingMarkerBaseColor;
+    if (count >= 15) return _evMarkerBaseColor;
+    return _h2MarkerBaseColor;
+  }
+
   NMarker _buildClusterMarker(
     LayerCluster<MapPoint> cluster, {
     double? currentZoom,
   }) {
     final count = cluster.childPointCount;
+    final borderColor = _clusterBorderColor(count);
+    final icon = _clusterIconsByBorderColor[borderColor.value] ??
+        _clusterIconsByBorderColor[_clusterBorderPalette.first.value];
     final marker = NMarker(
       id: 'cluster_${cluster.uuid}',
       position: NLatLng(cluster.latitude, cluster.longitude),
-      size: const Size(56, 56),
-      icon: _clusterIcon,
+      size: const Size(44, 44),
+      icon: icon,
       caption: NOverlayCaption(
         text: '$count',
-        textSize: 13,
+        textSize: 12,
         color: Colors.black87,
         haloColor: Colors.white.withOpacity(0.0),
       ),
