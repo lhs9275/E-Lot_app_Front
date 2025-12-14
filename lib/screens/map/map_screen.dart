@@ -2443,7 +2443,7 @@ class _MapScreenState extends State<MapScreen> {
       title: station.stationName,
       subtitle: '수소 충전소',
       trailingBuilder: (setPopupState) {
-        final isFav = _isFavoriteStation(station);
+        final isFav = _isFavoriteStationId(station.stationId);
         return IconButton(
           tooltip: '즐겨찾기',
           icon: Icon(
@@ -2451,7 +2451,7 @@ class _MapScreenState extends State<MapScreen> {
             color: isFav ? Colors.amber : Colors.grey.shade500,
           ),
           onPressed: () async {
-            await _toggleFavoriteStation(station);
+            await _toggleFavoriteStationId(station.stationId);
             setPopupState(() {});
           },
         );
@@ -2572,11 +2572,28 @@ class _MapScreenState extends State<MapScreen> {
   void _showParkingLotPopup(ParkingLot lot) async {
     if (!mounted) return;
 
+    await _syncFavoritesFromServer();
+    if (!mounted) return;
+
     await _showFloatingPanel(
       accentColor: _parkingMarkerBaseColor,
       icon: Icons.local_parking_rounded,
       title: lot.name,
       subtitle: '주차장 정보',
+      trailingBuilder: (setPopupState) {
+        final isFav = _isFavoriteStationId(lot.id);
+        return IconButton(
+          tooltip: '즐겨찾기',
+          icon: Icon(
+            isFav ? Icons.star_rounded : Icons.star_border_rounded,
+            color: isFav ? Colors.amber : Colors.grey.shade500,
+          ),
+          onPressed: () async {
+            await _toggleFavoriteStationId(lot.id);
+            setPopupState(() {});
+          },
+        );
+      },
       contentBuilder: (_) {
         final availability = _formatParkingSpaces(lot);
         final feeSummary = lot.feeSummary ?? '요금 정보 없음';
@@ -2692,11 +2709,28 @@ class _MapScreenState extends State<MapScreen> {
   void _showEvStationPopup(EVStation station) async {
     if (!mounted) return;
 
+    await _syncFavoritesFromServer();
+    if (!mounted) return;
+
     await _showFloatingPanel(
       accentColor: _evMarkerBaseColor,
       icon: Icons.electric_car_rounded,
       title: station.stationName,
       subtitle: '전기 충전소',
+      trailingBuilder: (setPopupState) {
+        final isFav = _isFavoriteStationId(station.stationId);
+        return IconButton(
+          tooltip: '즐겨찾기',
+          icon: Icon(
+            isFav ? Icons.star_rounded : Icons.star_border_rounded,
+            color: isFav ? Colors.amber : Colors.grey.shade500,
+          ),
+          onPressed: () async {
+            await _toggleFavoriteStationId(station.stationId);
+            setPopupState(() {});
+          },
+        );
+      },
       contentBuilder: (_) {
         final statusColor = _evStatusColor(station.statusLabel);
         final outputText =
@@ -3492,12 +3526,11 @@ class _MapScreenState extends State<MapScreen> {
 
   // --- 즐겨찾기 관련 ---
   /// 현재 스테이션이 즐겨찾기인지 여부를 빠르게 확인한다.
-  bool _isFavoriteStation(H2Station station) =>
-      _favoriteStationIds.contains(station.stationId);
+  bool _isFavoriteStationId(String stationId) =>
+      _favoriteStationIds.contains(stationId);
 
   /// 백엔드 즐겨찾기 API를 호출해 서버와 상태를 동기화한다.
-  Future<void> _toggleFavoriteStation(H2Station station) async {
-    final stationId = station.stationId;
+  Future<void> _toggleFavoriteStationId(String stationId) async {
     final isFav = _favoriteStationIds.contains(stationId);
 
     // 🔑 accessToken 안전하게 가져오기
