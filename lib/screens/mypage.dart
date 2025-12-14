@@ -1,1 +1,1 @@
-﻿
+export 'user/mypage.dart';

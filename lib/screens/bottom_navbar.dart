@@ -16,9 +16,6 @@ class MainBottomNavBar extends StatelessWidget {
     required this.currentIndex,
   });
 
-  // ✨ 디자인용 색상 정의 (이미지 속 보라색)
-  final Color _purple = const Color(0xFF5F33E1);
-  // final Color _lightPurple = const Color(0xFFE9E3FF); // 배경색이 필요 없으면 주석 처리
   final Color _iconGrey = const Color(0xFFB5B5C3); // 선택 안 된 아이콘 색
 
   void _handleTap(BuildContext context, int index) {
