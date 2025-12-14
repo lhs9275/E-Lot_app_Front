@@ -28,6 +28,7 @@ import '../etc/review_list.dart';
 import '../../services/parking_lot_api_service.dart';
 import '../bottom_navbar.dart'; // ✅ 공통 하단 네비게이션 바
 import '../etc/review.dart'; // ⭐ 리뷰 작성 페이지
+import '../payment/kakao_pay_webview.dart'; // 카카오페이 WebView
 import 'package:psp2_fn/auth/token_storage.dart'; // 🔑 JWT 저장소
 import 'package:psp2_fn/auth/auth_api.dart' as clos_auth;
 
@@ -229,10 +230,10 @@ class _MapScreenState extends State<MapScreen> {
   /// ⭐ 백엔드 주소 (clos21)
   static const String _backendBaseUrl = 'https://clos21.kr';
   static const String _appRedirectScheme = 'psp2fn';
-  /// KakaoPay는 http/https 리다이렉트만 허용하므로, 서버에 브릿지 페이지를 두고
-  /// 거기서 앱 스킴으로 다시 넘겨준다.
-  static const String _paymentBridgeBase =
-      'https://clos21.kr/pay/bridge'; // 서버에서 앱 스킴으로 redirect해야 함
+  /// KakaoPay는 http/https 리다이렉트만 허용하므로, 서버가 승인 처리 후 앱으로 돌려보낸다.
+  static const String _paymentBridgeBase = 'https://clos21.kr/pay/bridge';
+  static const String _paymentApproveRedirectBase =
+      'https://clos21.kr/api/payments/kakao/approve/redirect';
 
   /// ⭐ 리뷰에서 사용할 기본 이미지 (충전소 개별 사진이 아직 없으므로 공통)
   static const String _defaultStationImageUrl =
@@ -3105,9 +3106,15 @@ class _MapScreenState extends State<MapScreen> {
         return;
       }
 
-      final approvalUrl = _bridgeUrl('success');
-      final cancelUrl = _bridgeUrl('cancel');
-      final failUrl = _bridgeUrl('fail');
+      final approvalUrl = _approvalRedirectUrl('success');
+      final cancelUrl = _bridgeUrl(
+        'cancel',
+        redirectBase: '$_backendBaseUrl/api/payments/kakao/cancel',
+      );
+      final failUrl = _bridgeUrl(
+        'fail',
+        redirectBase: '$_backendBaseUrl/api/payments/kakao/fail',
+      );
 
       final orderId =
           'ORDER-${DateTime.now().millisecondsSinceEpoch.toString()}';
@@ -3151,30 +3158,38 @@ class _MapScreenState extends State<MapScreen> {
             pick(data, ['android_app_scheme', 'androidAppScheme']);
         final iosScheme = pick(data, ['ios_app_scheme', 'iosAppScheme']);
 
-        // 딥링크를 우선 시도하고, 실패 시 HTTPS 모바일/앱 URL로 폴백.
-        final candidates = <String>[
-          if (Platform.isAndroid && androidScheme != null) androidScheme,
-          if (Platform.isIOS && iosScheme != null) iosScheme,
-          if (mobileUrl != null) mobileUrl, // HTTPS 경로로 승인 콜백 보조
-          if (appUrl != null) appUrl, // 카카오에서 제공하는 일반 앱 링크
-        ];
-
-        bool launched = false;
-        for (final url in candidates) {
-          try {
-            final launchUri = Uri.parse(url);
-            launched = await launchUrl(
-              launchUri,
-              mode: LaunchMode.externalApplication,
-            );
-          } catch (_) {
-            launched = false;
-          }
-          if (launched) break;
+        // WebView로 결제 페이지 열기
+        final paymentUrl = mobileUrl ?? appUrl;
+        if (paymentUrl == null) {
+          _showSnack('결제 URL을 받지 못했습니다.');
+          return;
         }
 
-        if (!launched) {
-          _showSnack('결제 리다이렉트 주소를 열 수 없습니다.');
+        if (!mounted) return;
+        final result = await Navigator.of(context).push<Map<String, dynamic>>(
+          MaterialPageRoute(
+            builder: (_) => KakaoPayWebView(
+              paymentUrl: paymentUrl,
+              orderId: orderId,
+            ),
+          ),
+        );
+
+        if (result == null) return;
+
+        final resultType = result['result'] as String?;
+        if (resultType == 'success') {
+          final pgToken = result['pgToken'] as String?;
+          final resultOrderId = result['orderId'] as String? ?? orderId;
+          if (pgToken != null) {
+            await _approvePayment(orderId: resultOrderId, pgToken: pgToken);
+          } else {
+            _showSnack('결제 승인 정보가 부족합니다.');
+          }
+        } else if (resultType == 'cancel') {
+          _showSnack('결제가 취소되었습니다.');
+        } else if (resultType == 'fail') {
+          _showSnack('결제에 실패했습니다.');
         }
       } else {
         _showSnack(
@@ -3303,7 +3318,9 @@ class _MapScreenState extends State<MapScreen> {
       );
 
       if (res.statusCode == 200) {
-        _showSnack('결제가 승인되었습니다.');
+        if (mounted) {
+          _showPaymentSuccessDialog();
+        }
       } else {
         _showSnack('결제 승인 실패 (${res.statusCode}) ${_shorten(res.body)}');
       }
@@ -3312,6 +3329,100 @@ class _MapScreenState extends State<MapScreen> {
     } finally {
       _isApprovingPayment = false;
     }
+  }
+
+  void _showPaymentSuccessDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => Dialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Container(
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(20),
+            gradient: const LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [Color(0xFFFFFFFF), Color(0xFFF8FAFC)],
+            ),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 80,
+                height: 80,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: const LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [Color(0xFF4ADE80), Color(0xFF22C55E)],
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFF22C55E).withOpacity(0.3),
+                      blurRadius: 20,
+                      offset: const Offset(0, 8),
+                    ),
+                  ],
+                ),
+                child: const Icon(
+                  Icons.check_rounded,
+                  color: Colors.white,
+                  size: 48,
+                ),
+              ),
+              const SizedBox(height: 24),
+              const Text(
+                '결제 완료',
+                style: TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF1F2937),
+                ),
+              ),
+              const SizedBox(height: 12),
+              const Text(
+                '결제가 성공적으로 완료되었습니다.\n주차장을 이용해 주셔서 감사합니다!',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 15,
+                  color: Color(0xFF6B7280),
+                  height: 1.5,
+                ),
+              ),
+              const SizedBox(height: 28),
+              SizedBox(
+                width: double.infinity,
+                height: 52,
+                child: ElevatedButton(
+                  onPressed: () => Navigator.of(ctx).pop(),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF3B82F6),
+                    foregroundColor: Colors.white,
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  child: const Text(
+                    '확인',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   String _shorten(String? raw, {int max = 160}) {
@@ -3323,10 +3434,19 @@ class _MapScreenState extends State<MapScreen> {
 
   bool _looksLikeEmail(String input) => input.contains('@');
 
-  String _bridgeUrl(String result) {
+  String _approvalRedirectUrl(String result) {
     final target = '$_appRedirectScheme://pay/$result';
-    final encoded = Uri.encodeComponent(target);
-    return '$_paymentBridgeBase?target=$encoded&result=$result';
+    final encodedTarget = Uri.encodeComponent(target);
+    return '$_paymentApproveRedirectBase?redirect=$encodedTarget';
+  }
+
+  String _bridgeUrl(String result, {String? redirectBase}) {
+    final target = '$_appRedirectScheme://pay/$result';
+    final encodedTarget = Uri.encodeComponent(target);
+    final String redirectQuery = redirectBase == null || redirectBase.isEmpty
+        ? ''
+        : '&redirect=${Uri.encodeComponent(redirectBase)}';
+    return '$_paymentBridgeBase?target=$encodedTarget$redirectQuery';
   }
 
   /// clos21 발급 JWT에서 userId(sub) 추출

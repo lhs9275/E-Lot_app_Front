@@ -74,6 +74,11 @@
             <action android:name="android.intent.action.VIEW" />
             <data android:scheme="kakaokompassauth" />
         </intent>
+        <!-- KakaoPay 결제용 스킴 -->
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="kakaotalk" />
+        </intent>
         <package android:name="com.kakao.talk" />
     </queries>
 </manifest>

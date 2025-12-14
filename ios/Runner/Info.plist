@@ -2,10 +2,12 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>CADisableMinimumFrameDurationOnPhone</key>
+	<true/>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Psp2 Fn</string>
+	<string>E-LOT</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -20,30 +22,6 @@
 	<string>$(FLUTTER_BUILD_NAME)</string>
 	<key>CFBundleSignature</key>
 	<string>????</string>
-	<key>CFBundleVersion</key>
-	<string>$(FLUTTER_BUILD_NUMBER)</string>
-	<key>LSRequiresIPhoneOS</key>
-	<true/>
-	<key>UILaunchStoryboardName</key>
-	<string>LaunchScreen</string>
-	<key>UIMainStoryboardFile</key>
-	<string>Main</string>
-	<key>UISupportedInterfaceOrientations</key>
-	<array>
-		<string>UIInterfaceOrientationPortrait</string>
-		<string>UIInterfaceOrientationLandscapeLeft</string>
-		<string>UIInterfaceOrientationLandscapeRight</string>
-	</array>
-	<key>UISupportedInterfaceOrientations~ipad</key>
-	<array>
-		<string>UIInterfaceOrientationPortrait</string>
-	<string>UIInterfaceOrientationPortraitUpsideDown</string>
-	<string>UIInterfaceOrientationLandscapeLeft</string>
-	<string>UIInterfaceOrientationLandscapeRight</string>
-	</array>
-	<key>NMFClientId</key>
-    <string>hoivm494r9</string>
-	<!-- Kakao OAuth redirect -->
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
@@ -71,6 +49,8 @@
 			</array>
 		</dict>
 	</array>
+	<key>CFBundleVersion</key>
+	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSApplicationQueriesSchemes</key>
 	<array>
 		<string>kakaokompassauth</string>
@@ -78,18 +58,32 @@
 		<string>kakaotalk</string>
 		<string>kakaopay</string>
 	</array>
-	<key>CADisableMinimumFrameDurationOnPhone</key>
+	<key>LSRequiresIPhoneOS</key>
 	<true/>
-	<key>UIApplicationSupportsIndirectInputEvents</key>
-	<true/>
-
-	<!-- ✅ 위치 권한 안내 문구 추가 (앱 사용 중) -->
-	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>내 주변 충전소와 주차장을 보여주기 위해 위치 정보가 필요합니다.</string>
-
-	<!-- ✅ (선택) 항상 허용까지 사용하고 싶을 때 -->
+	<key>NMFClientId</key>
+	<string>hoivm494r9</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
 	<string>내 주변 충전소와 주차장을 항상 더 정확하게 보여주기 위해 위치 정보가 필요합니다.</string>
-
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>내 주변 충전소와 주차장을 보여주기 위해 위치 정보가 필요합니다.</string>
+	<key>UIApplicationSupportsIndirectInputEvents</key>
+	<true/>
+	<key>UILaunchStoryboardName</key>
+	<string>LaunchScreen</string>
+	<key>UIMainStoryboardFile</key>
+	<string>Main</string>
+	<key>UISupportedInterfaceOrientations</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
+	<key>UISupportedInterfaceOrientations~ipad</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationPortraitUpsideDown</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
 </dict>
 </plist>
