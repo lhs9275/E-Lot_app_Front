@@ -11,6 +11,7 @@ import 'package:http/http.dart' as http;
 import 'package:kakao_flutter_sdk_user/kakao_flutter_sdk_user.dart';
 import 'package:supercluster/supercluster.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:video_player/video_player.dart';
 import 'package:uni_links/uni_links.dart';
 import 'map_controller.dart';
 import 'map_point.dart';
@@ -178,6 +179,9 @@ class _MapScreenState extends State<MapScreen> {
   bool _queuedRender = false;
   StreamSubscription<String?>? _linkSub;
   bool _isApprovingPayment = false;
+  VideoPlayerController? _loadingVideoController;
+  bool _isLoadingVideoReady = false;
+  bool _wasLoading = false;
 
   // 검색창 컨트롤러
   final TextEditingController _searchController = TextEditingController();
@@ -296,6 +300,7 @@ class _MapScreenState extends State<MapScreen> {
     super.initState();
     _mapController.addListener(_onMapControllerChanged);
     _mapController.loadAllStations();
+    _initLoadingVideo();
     _searchFocusNode.addListener(() {
       if (!mounted) return;
       setState(() {
@@ -318,6 +323,7 @@ class _MapScreenState extends State<MapScreen> {
     _linkSub?.cancel();
     _mapController.removeListener(_onMapControllerChanged);
     _mapController.dispose();
+    _loadingVideoController?.dispose();
     super.dispose();
   }
 
@@ -364,6 +370,53 @@ class _MapScreenState extends State<MapScreen> {
     }
   }
 
+  Future<void> _initLoadingVideo() async {
+    final controller = VideoPlayerController.asset(
+      'lib/assets/icons/welcome_sc/walking_sparky.mp4',
+    );
+    _loadingVideoController = controller;
+    controller
+      ..setLooping(true)
+      ..setVolume(0);
+    try {
+      await controller.initialize();
+      if (!mounted) return;
+      setState(() => _isLoadingVideoReady = true);
+      _updateLoadingVideoPlayback(_mapController.isLoading);
+    } catch (e) {
+      debugPrint('Loading video init failed: $e');
+    }
+  }
+
+  void _updateLoadingState(bool isLoading) {
+    _updateLoadingVideoPlayback(isLoading);
+
+    if (mounted) {
+      // 상태만 새로고침해서 오버레이가 갱신되도록
+      setState(() {});
+    }
+  }
+
+  void _updateLoadingVideoPlayback(bool isLoading) {
+    final controller = _loadingVideoController;
+    if (controller == null || !_isLoadingVideoReady) {
+      _wasLoading = isLoading;
+      return;
+    }
+
+    if (isLoading) {
+      controller.setVolume(0);
+      if (!controller.value.isPlaying) {
+        unawaited(controller.play());
+      }
+    } else if (_wasLoading) {
+      controller.pause();
+      controller.seekTo(Duration.zero);
+    }
+
+    _wasLoading = isLoading;
+  }
+
   void _initDeepLinks() {
     // 초기 링크 처리
     Future<void>(() async {
@@ -389,6 +442,7 @@ class _MapScreenState extends State<MapScreen> {
 
   void _onMapControllerChanged() {
     // 데이터/필터 변경 시 UI와 마커를 갱신한다.
+    _updateLoadingState(_mapController.isLoading);
     if (_isMapLoaded && _controller != null) {
       unawaited(_rebuildClusterIndex());
     }
@@ -405,15 +459,18 @@ class _MapScreenState extends State<MapScreen> {
     // 기본 제공 버튼(현재 위치 등)이 바 뒤로 숨지 않도록 한다.
     const double navBarHeight = 60;
     const double navBarBottomMargin = 10; // 바를 살짝 더 아래로 내려 여백을 줄임
-    final double bottomInset = MediaQuery.of(context).padding.bottom;
+    final padding = MediaQuery.of(context).padding;
+    final double bottomInset = padding.bottom;
+    final double topInset = padding.top;
     final double mapBottomPadding =
         navBarHeight + navBarBottomMargin + bottomInset;
     final bool isLoading = _mapController.isLoading;
+    final double overlayTop = topInset + 12;
 
     return Scaffold(
       extendBody: true, // 바 뒤로 본문을 확장해서 지도가 바 아래까지 깔리도록 함
       body: SafeArea(
-        top: true,
+        top: false, // 지도를 노치까지 확장
         bottom: false, // 하단 네비게이션 영역까지 지도가 깔리도록 bottom 패딩 제거
         child: Stack(
           children: [
@@ -431,7 +488,7 @@ class _MapScreenState extends State<MapScreen> {
 
             /// 🔍 상단 검색창 + 자동완성 리스트
             Positioned(
-              top: 45, // ⬅️ 살짝 아래로 내린 위치
+              top: overlayTop, // 노치 높이만큼 내려서 배치
               left: 16,
               right: 16,
               child: Column(
@@ -456,6 +513,17 @@ class _MapScreenState extends State<MapScreen> {
                 ],
               ),
             ),
+
+            /// ⏳ 모든 데이터(H2/EV/주차장) 로딩 중일 때 전체 오버레이
+            if (isLoading)
+              Positioned.fill(
+                child: Container(
+                  color: Colors.white.withOpacity(0.65),
+                  child: Center(
+                    child: _buildLoadingOverlayContent(),
+                  ),
+                ),
+              ),
           ],
         ),
       ),
@@ -478,6 +546,55 @@ class _MapScreenState extends State<MapScreen> {
       bottomNavigationBar: const MainBottomNavBar(currentIndex: 0),
     );
   }
+
+  Widget _buildLoadingOverlayContent() {
+    final controller = _loadingVideoController;
+    final hasVideo =
+        controller != null && _isLoadingVideoReady && controller.value.isInitialized;
+    final videoSize =
+        hasVideo ? controller.value.size : const Size(1, 1); // cover용 기준 크기
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 120,
+          height: 120,
+          decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.22),
+            shape: BoxShape.circle,
+          ),
+          child: ClipOval(
+            child: hasVideo
+                ? FittedBox(
+                    fit: BoxFit.cover,
+                    child: SizedBox(
+                      width: videoSize.width,
+                      height: videoSize.height,
+                      child: VideoPlayer(controller),
+                    ),
+                  )
+                : const Center(
+                    child: CircularProgressIndicator(color: Colors.black87),
+                  ),
+          ),
+        ),
+        const SizedBox(height: 16),
+        const CircularProgressIndicator(color: Colors.black87),
+        const SizedBox(height: 12),
+        const Text(
+          '충전소/주차장 정보를 불러오는 중...',
+          style: TextStyle(
+            color: Colors.black87,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// 새로고침 시 상단 UI에 덮어주는 간단한 스켈레톤 뷰
+  // 터치는 통과하도록 IgnorePointer 밖에서 감싼다.
 
   /// 🔍 상단 검색창 UI + 유사 이름 리스트
   Widget _buildSearchBar() {
