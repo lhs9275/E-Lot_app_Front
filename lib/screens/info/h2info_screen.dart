@@ -3,6 +3,7 @@
 import 'package:flutter/material.dart';
 import '../../models/h2_station.dart';
 import '../../services/h2_station_api_service.dart';
+import '../../utils/relative_time.dart';
 
 class InfoScreen extends StatefulWidget {
   const InfoScreen({super.key});
@@ -65,7 +66,9 @@ class _InfoScreenState extends State<InfoScreen> {
                       Text('상태: ${station.statusName}'),
                       Text('대기 차량: ${station.waitingCount ?? 0}대'),
                       Text('최대 충전 가능: ${station.maxChargeCount ?? 0}대'),
-                      Text('최종 갱신: ${station.lastModifiedAt ?? '정보 없음'}'),
+                      Text(
+                        '최근 갱신: ${formatKoreanRelativeTime(station.lastModifiedAt)}',
+                      ),
                     ],
                   ),
                 ),
