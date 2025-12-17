@@ -721,10 +721,183 @@ class _MapScreenState extends State<MapScreen> {
   }
 
   Future<void> _openNearbyFilterSheet() async {
+    const Color primaryColor = Color(0xFF6541FF);
+    const Color lightBgColor = Color(0xFFF9FBFD);
+    const Color cardColor = Colors.white;
+    const Color textColor = Color(0xFF1A1A1A);
+    const Color subTextColor = Color(0xFF8E929C);
+
+    Widget buildTrendySwitch({
+      required String title,
+      required String subtitle,
+      required bool value,
+      required ValueChanged<bool> onChanged,
+    }) {
+      return Container(
+        margin: const EdgeInsets.symmetric(vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: BoxDecoration(
+          color: cardColor,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: const Color(0xFFF2F4F6)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.02),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 15,
+                      color: textColor,
+                    ),
+                  ),
+                  if (subtitle.isNotEmpty) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      subtitle,
+                      style: const TextStyle(fontSize: 12, color: subTextColor),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            Transform.scale(
+              scale: 0.9,
+              child: Switch(
+                value: value,
+                onChanged: onChanged,
+                activeColor: Colors.white,
+                activeTrackColor: primaryColor,
+                inactiveThumbColor: Colors.white,
+                inactiveTrackColor: const Color(0xFFE5E7EB),
+                trackOutlineColor:
+                    MaterialStateProperty.all<Color>(Colors.transparent),
+                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    Widget buildDropdown(
+      String label,
+      String? value,
+      List<DropdownMenuItem<String?>> items,
+      ValueChanged<String?> onChanged,
+    ) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: const TextStyle(
+              fontWeight: FontWeight.w600,
+              fontSize: 13,
+              color: subTextColor,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Container(
+            decoration: BoxDecoration(
+              color: cardColor,
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.04),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: DropdownButtonFormField<String?>(
+              value: value,
+              items: items,
+              onChanged: onChanged,
+              decoration: const InputDecoration(
+                border: InputBorder.none,
+                contentPadding:
+                    EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                isDense: true,
+              ),
+              icon: const Icon(
+                Icons.keyboard_arrow_down_rounded,
+                color: subTextColor,
+              ),
+              style: const TextStyle(
+                color: textColor,
+                fontWeight: FontWeight.w600,
+                fontSize: 14,
+              ),
+              dropdownColor: cardColor,
+              borderRadius: BorderRadius.circular(16),
+            ),
+          ),
+          const SizedBox(height: 12),
+        ],
+      );
+    }
+
+    Widget buildSoftChip(
+      String label,
+      bool selected,
+      ValueChanged<bool> onSelected,
+    ) {
+      return FilterChip(
+        label: Text(label),
+        selected: selected,
+        onSelected: onSelected,
+        selectedColor: const Color(0xFFF0EBFF),
+        checkmarkColor: primaryColor,
+        backgroundColor: Colors.white,
+        labelStyle: TextStyle(
+          color: selected ? primaryColor : subTextColor,
+          fontWeight: FontWeight.w700,
+          fontSize: 13,
+        ),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(14),
+          side: BorderSide.none,
+        ),
+        elevation: 1,
+        shadowColor: Colors.black.withOpacity(0.1),
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+      );
+    }
+
+    Widget buildSectionTitle(String title) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8.0),
+        child: Text(
+          title,
+          style: const TextStyle(
+            fontWeight: FontWeight.w800,
+            fontSize: 16,
+            color: textColor,
+          ),
+        ),
+      );
+    }
+
     final result = await showModalBottomSheet<_NearbyFilterResult>(
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
+      backgroundColor: lightBgColor,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
       builder: (context) {
         bool enabled = _useNearbyFilter;
         bool includeEv = _includeEvFilter;
@@ -777,16 +950,6 @@ class _MapScreenState extends State<MapScreen> {
           );
         }
 
-        InputDecoration inputDecoration(String label) {
-          return InputDecoration(
-            labelText: label,
-            border: const OutlineInputBorder(),
-            isDense: true,
-            contentPadding:
-            const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-          );
-        }
-
         return StatefulBuilder(
           builder: (context, setModalState) {
             return DraggableScrollableSheet(
@@ -797,416 +960,429 @@ class _MapScreenState extends State<MapScreen> {
               builder: (context, scrollController) {
                 return Padding(
                   padding: EdgeInsets.only(
-                    left: 16,
-                    right: 16,
-                    bottom: MediaQuery.of(context).viewInsets.bottom + 16,
-                    top: 8,
+                    left: 20,
+                    right: 20,
+                    bottom: MediaQuery.of(context).viewInsets.bottom + 20,
                   ),
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFF8F8FA),
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    child: ListView(
-                      controller: scrollController,
-                      padding: const EdgeInsets.all(12),
-                      children: [
+                  child: Column(
+                    children: [
                       Row(
                         children: [
-                          Text(
+                          const Text(
                             '상세 필터',
-                            style: Theme.of(context)
-                                .textTheme
-                                .titleMedium
-                                ?.copyWith(fontWeight: FontWeight.bold),
+                            style: TextStyle(
+                              fontWeight: FontWeight.w800,
+                              fontSize: 22,
+                              color: textColor,
+                            ),
                           ),
                           const Spacer(),
                           TextButton(
-                            onPressed: () {
-                              setModalState(reset);
-                            },
-                            child: const Text('초기화'),
+                            onPressed: () => setModalState(reset),
+                            child: const Text(
+                              '초기화',
+                              style: TextStyle(color: subTextColor),
+                            ),
                           ),
                         ],
                       ),
-                      SwitchListTile(
-                        contentPadding: EdgeInsets.zero,
+                      const SizedBox(height: 10),
+                      buildTrendySwitch(
+                        title: '필터 적용하기',
+                        subtitle: '체크 시 설정한 조건으로만 검색합니다.',
                         value: enabled,
-                        onChanged: (v) {
-                          setModalState(() {
-                            enabled = v;
-                          });
-                        },
-                        title: const Text('필터 켜기'),
-                        subtitle: const Text('꺼져 있으면 전체 데이터를 불러옵니다.'),
+                        onChanged: (v) => setModalState(() => enabled = v),
                       ),
-                      wrapIfDisabled(
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                      const SizedBox(height: 20),
+                      Expanded(
+                        child: ListView(
+                          controller: scrollController,
+                          physics: const BouncingScrollPhysics(),
+                          padding: const EdgeInsets.only(bottom: 20),
                           children: [
-                            const SizedBox(height: 6),
-                            Text(
-                              '검색 반경: ${radiusKm.toStringAsFixed(1)} km',
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w600,
-                                color: Colors.black87,
-                              ),
-                            ),
-                            Slider(
-                              value: radiusKm,
-                              min: 0.5,
-                              max: 20,
-                              divisions: 39,
-                              label: '${radiusKm.toStringAsFixed(1)}km',
-                              onChanged: (value) {
-                                setModalState(() {
-                                  radiusKm = value;
-                                });
-                              },
-                            ),
-                            const SizedBox(height: 10),
-                            Text(
-                              '표시 대상',
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .titleSmall
-                                  ?.copyWith(fontWeight: FontWeight.bold),
-                            ),
-                            const SizedBox(height: 6),
-                            Wrap(
-                              spacing: 8,
-                              runSpacing: 4,
-                              children: [
-                                FilterChip(
-                                  label: const Text('EV'),
-                                  selected: includeEv,
-                                  onSelected: (v) {
-                                    setModalState(() {
-                                      includeEv = v;
-                                    });
-                                  },
-                                ),
-                                FilterChip(
-                                  label: const Text('H2'),
-                                  selected: includeH2,
-                                  onSelected: (v) {
-                                    setModalState(() {
-                                      includeH2 = v;
-                                    });
-                                  },
-                                ),
-                                FilterChip(
-                                  label: const Text('주차장'),
-                                  selected: includeParking,
-                                  onSelected: (v) {
-                                    setModalState(() {
-                                      includeParking = v;
-                                    });
-                                  },
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 16),
-                            if (includeEv || includeH2 || includeParking)
-                              const SizedBox.shrink()
-                            else
-                              const Text(
-                                '표시 대상을 선택하면 옵션이 나타납니다.',
-                                style: TextStyle(color: Colors.black54),
-                              ),
-                            if (includeEv) ...[
-                              Text(
-                                'EV 옵션',
-                                style: Theme.of(context)
-                                    .textTheme
-                                    .titleSmall
-                                    ?.copyWith(fontWeight: FontWeight.bold),
-                              ),
-                              const SizedBox(height: 8),
-                              DropdownButtonFormField<String?>(
-                                value: evStatus,
-                                decoration: inputDecoration('상태'),
-                                items: const [
-                                  DropdownMenuItem<String?>(
-                                    value: null,
-                                    child: Text('전체'),
+                            wrapIfDisabled(
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    mainAxisAlignment:
+                                        MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      const Text(
+                                        '검색 반경',
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.w700,
+                                          color: textColor,
+                                        ),
+                                      ),
+                                      Text(
+                                        "${radiusKm.toStringAsFixed(1)} km",
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          color: primaryColor,
+                                        ),
+                                      ),
+                                    ],
                                   ),
-                                  DropdownMenuItem<String?>(
-                                    value: '2',
-                                    child: Text('충전대기(사용 가능)'),
-                                  ),
-                                  DropdownMenuItem<String?>(
-                                    value: '3',
-                                    child: Text('충전중'),
-                                  ),
-                                  DropdownMenuItem<String?>(
-                                    value: '5',
-                                    child: Text('운영중지/점검'),
-                                  ),
-                                ],
-                                onChanged: (value) =>
-                                    setModalState(() => evStatus = value),
-                              ),
-                              const SizedBox(height: 8),
-                              DropdownButtonFormField<String?>(
-                                value: evCharger,
-                                decoration: inputDecoration('충전기 타입'),
-                                items: const [
-                                  DropdownMenuItem<String?>(
-                                    value: null,
-                                    child: Text('전체'),
-                                  ),
-                                  DropdownMenuItem<String?>(
-                                    value: '06',
-                                    child: Text('멀티(차데모/AC3상/콤보)'),
-                                  ),
-                                  DropdownMenuItem<String?>(
-                                    value: '04',
-                                    child: Text('급속(DC콤보)'),
-                                  ),
-                                  DropdownMenuItem<String?>(
-                                    value: '02',
-                                    child: Text('완속(AC완속)'),
-                                  ),
-                                  DropdownMenuItem<String?>(
-                                    value: '07',
-                                    child: Text('기타(AC3상 등)'),
-                                  ),
-                                ],
-                                onChanged: (value) =>
-                                    setModalState(() => evCharger = value),
-                              ),
-                              const SizedBox(height: 16),
-                            ],
-                            if (includeH2) ...[
-                              Text(
-                                'H2 옵션',
-                                style: Theme.of(context)
-                                    .textTheme
-                                    .titleSmall
-                                    ?.copyWith(fontWeight: FontWeight.bold),
-                              ),
-                              const SizedBox(height: 8),
-                              Text(
-                                '규격(SPEC)',
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.w600,
-                                  color: Colors.black87,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              Wrap(
-                                spacing: 8,
-                                runSpacing: 4,
-                                children: _defaultH2Specs.map((spec) {
-                                  final selected = h2Specs.contains(spec);
-                                  return FilterChip(
-                                    label: Text(spec),
-                                    selected: selected,
-                                    onSelected: (v) {
-                                      setModalState(() {
-                                        if (v) {
-                                          h2Specs.add(spec);
-                                        } else {
-                                          h2Specs.remove(spec);
-                                        }
-                                      });
-                                    },
-                                  );
-                                }).toList(),
-                              ),
-                              const SizedBox(height: 10),
-                              Text(
-                                '충전소 유형',
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.w600,
-                                  color: Colors.black87,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              Wrap(
-                                spacing: 8,
-                                runSpacing: 4,
-                                children:
-                                _defaultH2StationTypes.map((typeLabel) {
-                                  final selected =
-                                  h2StationTypes.contains(typeLabel);
-                                  return FilterChip(
-                                    label: Text(typeLabel),
-                                    selected: selected,
-                                    onSelected: (v) {
-                                      setModalState(() {
-                                        if (v) {
-                                          h2StationTypes.add(typeLabel);
-                                        } else {
-                                          h2StationTypes.remove(typeLabel);
-                                        }
-                                      });
-                                    },
-                                  );
-                                }).toList(),
-                              ),
-                              const SizedBox(height: 10),
-                              SwitchListTile(
-                                contentPadding: EdgeInsets.zero,
-                                value: usePrice,
-                                onChanged: (v) {
-                                  setModalState(() {
-                                    usePrice = v;
-                                  });
-                                },
-                                title: const Text('가격 필터 사용'),
-                                subtitle:
-                                const Text('kg당 가격 범위를 지정할 수 있습니다.'),
-                              ),
-                              if (usePrice) ...[
-                                RangeSlider(
-                                  values: priceRange,
-                                  min: 0,
-                                  max: 20000,
-                                  divisions: 40,
-                                  labels: RangeLabels(
-                                    '${priceRange.start.round()}원',
-                                    '${priceRange.end.round()}원',
-                                  ),
-                                  onChanged: (value) {
-                                    setModalState(() {
-                                      priceRange = value;
-                                    });
-                                  },
-                                ),
-                                Row(
-                                  mainAxisAlignment:
-                                  MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    Text(
-                                        '최소 ${priceRange.start.round()}원/kg'),
-                                    Text(
-                                        '최대 ${priceRange.end.round()}원/kg'),
-                                  ],
-                                ),
-                                const SizedBox(height: 10),
-                              ],
-                              SwitchListTile(
-                                contentPadding: EdgeInsets.zero,
-                                value: useAvailability,
-                                onChanged: (v) {
-                                  setModalState(() {
-                                    useAvailability = v;
-                                  });
-                                },
-                                title: const Text('가용 슬롯 필터'),
-                                subtitle: const Text('동시 충전 가능 대수 기준'),
-                              ),
-                              if (useAvailability)
-                                Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Slider(
-                                      value: availableMin.toDouble(),
-                                      min: 0,
-                                      max: 10,
-                                      divisions: 10,
-                                      label: '$availableMin대 이상',
-                                      onChanged: (value) {
-                                        setModalState(() {
-                                          availableMin = value.round();
-                                        });
-                                      },
+                                  SliderTheme(
+                                    data: SliderThemeData(
+                                      activeTrackColor: primaryColor,
+                                      thumbColor: Colors.white,
+                                      inactiveTrackColor:
+                                          primaryColor.withOpacity(0.1),
+                                      overlayColor:
+                                          primaryColor.withOpacity(0.1),
                                     ),
-                                    Text(
-                                      '$availableMin대 이상',
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.w600,
-                                        color: Colors.black87,
+                                    child: Slider(
+                                      value: radiusKm,
+                                      min: 0.5,
+                                      max: 20,
+                                      divisions: 39,
+                                      onChanged: (value) =>
+                                          setModalState(() => radiusKm = value),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 20),
+                                  buildSectionTitle('표시 대상'),
+                                  Wrap(
+                                    spacing: 10,
+                                    runSpacing: 10,
+                                    children: [
+                                      buildSoftChip(
+                                        '⚡ EV',
+                                        includeEv,
+                                        (v) =>
+                                            setModalState(() => includeEv = v),
+                                      ),
+                                      buildSoftChip(
+                                        '💧 H2',
+                                        includeH2,
+                                        (v) =>
+                                            setModalState(() => includeH2 = v),
+                                      ),
+                                      buildSoftChip(
+                                        '🅿️ 주차장',
+                                        includeParking,
+                                        (v) => setModalState(
+                                          () => includeParking = v,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 24),
+                                  if (!includeEv &&
+                                      !includeH2 &&
+                                      !includeParking)
+                                    const Center(
+                                      child: Text(
+                                        '표시 대상을 선택하면 상세 옵션이 나타납니다.',
+                                        style: TextStyle(color: subTextColor),
                                       ),
                                     ),
+                                  if (includeEv) ...[
+                                    buildSectionTitle('EV 상세 옵션'),
+                                    buildDropdown(
+                                      '충전기 상태',
+                                      evStatus,
+                                      const [
+                                        DropdownMenuItem(
+                                          value: null,
+                                          child: Text('전체'),
+                                        ),
+                                        DropdownMenuItem(
+                                          value: '2',
+                                          child: Text('충전대기(사용 가능)'),
+                                        ),
+                                        DropdownMenuItem(
+                                          value: '3',
+                                          child: Text('충전중'),
+                                        ),
+                                        DropdownMenuItem(
+                                          value: '5',
+                                          child: Text('운영중지/점검'),
+                                        ),
+                                      ],
+                                      (v) => setModalState(() => evStatus = v),
+                                    ),
+                                    buildDropdown(
+                                      '충전기 타입',
+                                      evCharger,
+                                      const [
+                                        DropdownMenuItem(
+                                          value: null,
+                                          child: Text('전체'),
+                                        ),
+                                        DropdownMenuItem(
+                                          value: '06',
+                                          child: Text('멀티(차데모/AC3상/콤보)'),
+                                        ),
+                                        DropdownMenuItem(
+                                          value: '04',
+                                          child: Text('급속(DC콤보)'),
+                                        ),
+                                        DropdownMenuItem(
+                                          value: '02',
+                                          child: Text('완속(AC완속)'),
+                                        ),
+                                        DropdownMenuItem(
+                                          value: '07',
+                                          child: Text('기타(AC3상 등)'),
+                                        ),
+                                      ],
+                                      (v) => setModalState(() => evCharger = v),
+                                    ),
+                                    const SizedBox(height: 12),
                                   ],
-                                ),
-                              const SizedBox(height: 16),
-                            ],
-                            if (includeParking) ...[
-                              Text(
-                                '주차장 옵션',
-                                style: Theme.of(context)
-                                    .textTheme
-                                    .titleSmall
-                                    ?.copyWith(fontWeight: FontWeight.bold),
-                              ),
-                              const SizedBox(height: 8),
-                              DropdownButtonFormField<String?>(
-                                value: parkingCategory,
-                                decoration: inputDecoration('구분'),
-                                items: [
-                                  const DropdownMenuItem<String?>(
-                                    value: null,
-                                    child: Text('전체'),
-                                  ),
-                                  ..._parkingCategoryOptions.map(
-                                        (c) => DropdownMenuItem<String?>(
-                                      value: c,
-                                      child: Text(c),
+                                  if (includeH2) ...[
+                                    buildSectionTitle('H2 상세 옵션'),
+                                    const Text(
+                                      '압력 규격',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.w600,
+                                        fontSize: 13,
+                                        color: subTextColor,
+                                      ),
                                     ),
-                                  ),
-                                ],
-                                onChanged: (value) =>
-                                    setModalState(() => parkingCategory = value),
-                              ),
-                              const SizedBox(height: 8),
-                              DropdownButtonFormField<String?>(
-                                value: parkingType,
-                                decoration: inputDecoration('유형'),
-                                items: [
-                                  const DropdownMenuItem<String?>(
-                                    value: null,
-                                    child: Text('전체'),
-                                  ),
-                                  ..._parkingTypeOptions.map(
-                                        (c) => DropdownMenuItem<String?>(
-                                      value: c,
-                                      child: Text(c),
+                                    const SizedBox(height: 6),
+                                    Wrap(
+                                      spacing: 8,
+                                      children: _defaultH2Specs.map((spec) {
+                                        return buildSoftChip(
+                                          spec,
+                                          h2Specs.contains(spec),
+                                          (v) => setModalState(
+                                            () => v
+                                                ? h2Specs.add(spec)
+                                                : h2Specs.remove(spec),
+                                          ),
+                                        );
+                                      }).toList(),
                                     ),
-                                  ),
-                                ],
-                                onChanged: (value) =>
-                                    setModalState(() => parkingType = value),
-                              ),
-                              const SizedBox(height: 8),
-                              DropdownButtonFormField<String?>(
-                                value: parkingFeeType,
-                                decoration: inputDecoration('요금'),
-                                items: [
-                                  const DropdownMenuItem<String?>(
-                                    value: null,
-                                    child: Text('전체'),
-                                  ),
-                                  ..._parkingFeeTypeOptions.map(
-                                        (c) => DropdownMenuItem<String?>(
-                                      value: c,
-                                      child: Text(c),
+                                    const SizedBox(height: 12),
+                                    const Text(
+                                      '충전소 유형',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.w600,
+                                        fontSize: 13,
+                                        color: subTextColor,
+                                      ),
                                     ),
-                                  ),
+                                    const SizedBox(height: 6),
+                                    Wrap(
+                                      spacing: 8,
+                                      children: _defaultH2StationTypes
+                                          .map((typeLabel) {
+                                        return buildSoftChip(
+                                          typeLabel,
+                                          h2StationTypes.contains(typeLabel),
+                                          (v) => setModalState(
+                                            () => v
+                                                ? h2StationTypes.add(typeLabel)
+                                                : h2StationTypes
+                                                    .remove(typeLabel),
+                                          ),
+                                        );
+                                      }).toList(),
+                                    ),
+                                    const SizedBox(height: 16),
+                                    buildTrendySwitch(
+                                      title: '가격 범위 설정',
+                                      subtitle: 'kg당 가격 범위를 지정합니다.',
+                                      value: usePrice,
+                                      onChanged: (v) =>
+                                          setModalState(() => usePrice = v),
+                                    ),
+                                    if (usePrice) ...[
+                                      SliderTheme(
+                                        data: SliderThemeData(
+                                          activeTrackColor: primaryColor,
+                                          thumbColor: Colors.white,
+                                          inactiveTrackColor:
+                                              primaryColor.withOpacity(0.1),
+                                          trackHeight: 6,
+                                          rangeThumbShape:
+                                              const RoundRangeSliderThumbShape(
+                                            enabledThumbRadius: 10,
+                                            elevation: 3,
+                                          ),
+                                          overlayColor:
+                                              primaryColor.withOpacity(0.1),
+                                        ),
+                                        child: RangeSlider(
+                                          values: priceRange,
+                                          min: 0,
+                                          max: 20000,
+                                          divisions: 40,
+                                          labels: RangeLabels(
+                                            "${priceRange.start.round()}원",
+                                            "${priceRange.end.round()}원",
+                                          ),
+                                          onChanged: (v) =>
+                                              setModalState(() => priceRange = v),
+                                        ),
+                                      ),
+                                      Padding(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 10,
+                                        ),
+                                        child: Row(
+                                          mainAxisAlignment:
+                                              MainAxisAlignment.spaceBetween,
+                                          children: [
+                                            Text(
+                                              "${priceRange.start.round()}원",
+                                              style: const TextStyle(
+                                                fontSize: 13,
+                                                fontWeight: FontWeight.w600,
+                                                color: subTextColor,
+                                              ),
+                                            ),
+                                            Text(
+                                              "${priceRange.end.round()}원",
+                                              style: const TextStyle(
+                                                fontSize: 13,
+                                                fontWeight: FontWeight.w600,
+                                                color: subTextColor,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      const SizedBox(height: 12),
+                                    ],
+                                    buildTrendySwitch(
+                                      title: '최소 대기 슬롯',
+                                      subtitle: '현재 충전 가능한 자리가 있는 곳만 봅니다.',
+                                      value: useAvailability,
+                                      onChanged: (v) => setModalState(
+                                        () => useAvailability = v,
+                                      ),
+                                    ),
+                                    if (useAvailability) ...[
+                                      const SizedBox(height: 6),
+                                      Row(
+                                        children: [
+                                          Expanded(
+                                            child: SliderTheme(
+                                              data: SliderThemeData(
+                                                activeTrackColor: primaryColor,
+                                                inactiveTrackColor:
+                                                    primaryColor.withOpacity(0.1),
+                                                thumbColor: Colors.white,
+                                                trackHeight: 6,
+                                              ),
+                                              child: Slider(
+                                                value: availableMin.toDouble(),
+                                                min: 0,
+                                                max: 10,
+                                                divisions: 10,
+                                                onChanged: (v) => setModalState(
+                                                  () => availableMin = v.round(),
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 12,
+                                              vertical: 6,
+                                            ),
+                                            decoration: BoxDecoration(
+                                              color: primaryColor.withOpacity(0.1),
+                                              borderRadius:
+                                                  BorderRadius.circular(8),
+                                            ),
+                                            child: Text(
+                                              "${availableMin}대 이상",
+                                              style: const TextStyle(
+                                                fontWeight: FontWeight.bold,
+                                                color: primaryColor,
+                                                fontSize: 13,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 12),
+                                    ],
+                                  ],
+                                  if (includeParking) ...[
+                                    buildSectionTitle('주차장 상세 옵션'),
+                                    buildDropdown(
+                                      '운영 구분',
+                                      parkingCategory,
+                                      [
+                                        const DropdownMenuItem(
+                                          value: null,
+                                          child: Text('전체'),
+                                        ),
+                                        ..._parkingCategoryOptions.map(
+                                          (c) => DropdownMenuItem(
+                                            value: c,
+                                            child: Text(c),
+                                          ),
+                                        ),
+                                      ],
+                                      (v) =>
+                                          setModalState(() => parkingCategory = v),
+                                    ),
+                                    buildDropdown(
+                                      '유형',
+                                      parkingType,
+                                      [
+                                        const DropdownMenuItem(
+                                          value: null,
+                                          child: Text('전체'),
+                                        ),
+                                        ..._parkingTypeOptions.map(
+                                          (c) => DropdownMenuItem(
+                                            value: c,
+                                            child: Text(c),
+                                          ),
+                                        ),
+                                      ],
+                                      (v) => setModalState(() => parkingType = v),
+                                    ),
+                                    buildDropdown(
+                                      '요금 구분',
+                                      parkingFeeType,
+                                      [
+                                        const DropdownMenuItem(
+                                          value: null,
+                                          child: Text('전체'),
+                                        ),
+                                        ..._parkingFeeTypeOptions.map(
+                                          (c) => DropdownMenuItem(
+                                            value: c,
+                                            child: Text(c),
+                                          ),
+                                        ),
+                                      ],
+                                      (v) =>
+                                          setModalState(() => parkingFeeType = v),
+                                    ),
+                                  ],
                                 ],
-                                onChanged: (value) => setModalState(
-                                        () => parkingFeeType = value),
                               ),
-                            ],
+                            ),
                           ],
                         ),
                       ),
-                      const SizedBox(height: 16),
-                      Row(
-                        children: [
-                          TextButton(
-                            onPressed: () {
-                              setModalState(reset);
-                            },
-                            child: const Text('초기화'),
-                          ),
-                          const Spacer(),
-                          FilledButton.icon(
-                            icon: const Icon(Icons.check),
-                            label: const Text('적용'),
+                      Padding(
+                        padding: const EdgeInsets.only(top: 16),
+                        child: SizedBox(
+                          width: double.infinity,
+                          height: 56,
+                          child: ElevatedButton(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: primaryColor,
+                              foregroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              elevation: 4,
+                              shadowColor: primaryColor.withOpacity(0.4),
+                            ),
                             onPressed: () {
                               Navigator.of(context).pop(
                                 _NearbyFilterResult(
@@ -1217,11 +1393,11 @@ class _MapScreenState extends State<MapScreen> {
                                   includeParking: includeParking,
                                   evType: includeEv ? evType : null,
                                   evChargerType:
-                                  includeEv ? evCharger : null,
+                                      includeEv ? evCharger : null,
                                   evStatus: includeEv ? evStatus : null,
                                   h2Type: includeH2 ? h2Type : null,
                                   h2StationTypes:
-                                  includeH2 ? h2StationTypes : {},
+                                      includeH2 ? h2StationTypes : {},
                                   h2Specs: includeH2 ? h2Specs : {},
                                   priceMin: includeH2 && usePrice
                                       ? priceRange.start.round()
@@ -1229,26 +1405,31 @@ class _MapScreenState extends State<MapScreen> {
                                   priceMax: includeH2 && usePrice
                                       ? priceRange.end.round()
                                       : null,
-                                  availableMin:
-                                  includeH2 && useAvailability
+                                  availableMin: includeH2 && useAvailability
                                       ? availableMin
                                       : null,
                                   parkingCategory:
-                                  includeParking ? parkingCategory : null,
+                                      includeParking ? parkingCategory : null,
                                   parkingType:
-                                  includeParking ? parkingType : null,
+                                      includeParking ? parkingType : null,
                                   parkingFeeType: includeParking
                                       ? parkingFeeType
                                       : null,
                                 ),
                               );
                             },
+                            child: const Text(
+                              '필터 적용하기',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
                           ),
-                        ],
+                        ),
                       ),
                     ],
                   ),
-                ),
                 );
               },
             );
@@ -1305,13 +1486,13 @@ class _MapScreenState extends State<MapScreen> {
           style: ElevatedButton.styleFrom(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
             backgroundColor:
-            _useNearbyFilter ? Colors.black.withOpacity(0.85) : Colors.white,
+                _useNearbyFilter ? Colors.black.withOpacity(0.85) : Colors.white,
             foregroundColor:
-            _useNearbyFilter ? Colors.white : Colors.black87,
+                _useNearbyFilter ? Colors.white : Colors.black87,
             elevation: _useNearbyFilter ? 2 : 0,
             side: BorderSide(
               color:
-              _useNearbyFilter ? Colors.black54 : Colors.grey.shade300,
+                  _useNearbyFilter ? Colors.black54 : Colors.grey.shade300,
             ),
           ),
           onPressed: _openNearbyFilterSheet,
