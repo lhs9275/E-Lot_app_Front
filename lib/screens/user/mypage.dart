@@ -422,6 +422,14 @@ class _MyReviewsPageState extends State<MyReviewsPage> {
     _fetchMyReviews();
   }
 
+  IconData _placeIconForReview(String stationName) {
+    final name = stationName.trim();
+    final upper = name.toUpperCase();
+    if (name.contains('주차')) return Icons.local_parking_rounded;
+    if (name.contains('수소') || upper.contains('H2')) return Icons.local_gas_station_rounded;
+    if (name.contains('전기') || name.contains('충전') || upper.contains('EV')) return Icons.ev_station_rounded;
+    return Icons.rate_review_rounded;
+  }
   // --- 기능 로직 유지 ---
   Future<void> _fetchMyReviews() async {
     final token = await TokenStorage.getAccessToken();
@@ -583,7 +591,7 @@ class _MyReviewsPageState extends State<MyReviewsPage> {
                         color: _primaryColor.withOpacity(0.1),
                         borderRadius: BorderRadius.circular(10),
                       ),
-                      child: const Icon(Icons.ev_station_rounded, color: _primaryColor, size: 20),
+                      child: Icon(_placeIconForReview(review.stationName), color: _primaryColor, size: 20),
                     ),
                     const SizedBox(width: 12),
                     Expanded(
