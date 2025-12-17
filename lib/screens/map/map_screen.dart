@@ -272,45 +272,56 @@ class _MapScreenState extends State<MapScreen> {
     super.dispose();
   }
 
-  // ✅ [아이콘 변경] (요청 팔레트 적용 + 네모 잔상 제거)
-  // - Soft Violet: #9575CD / #7E57C2
-  // - Warm Yellow/Amber: #FFD54F / #FFCA28
-  // - Rose Pink: #F06292 / #EC407A
-  // - "네모 잔상" 방지: 그림자/PhysicalModel 제거 + ClipOval 내부에서만 렌더링
-  // ✅ [아이콘 변경] (요청 팔레트 적용 + 반투명 + 네모 잔상 방지)
+  // ✅ [요청 반영] 파스텔 보라 통일 + 반투명(약 80%) + 네모 잔상 방지
   Future<void> _prepareClusterIcons() async {
     try {
       Future<NOverlayImage> makeIcon({
         required Color a,
         required Color b,
         double size = 56,
-        double fillOpacity = 0.30, //
-        double ringOpacity = 0.70,
+        double fillOpacity = 0.80, // ✅ 거의 80% 불투명(=0.8 opacity)
+        double ringOpacity = 0.90,
         double ringWidth = 2,
       }) async {
+        final key = ValueKey('cluster_${size}_${fillOpacity}_${ringOpacity}_$ringWidth');
         return NOverlayImage.fromWidget(
           context: context,
           widget: Material(
             type: MaterialType.transparency,
-            child: SizedBox(
-              width: size,
-              height: size,
-              child: ClipOval( // ✅ 네모 잔상 방지
-                child: Container(
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [
-                        a.withOpacity(fillOpacity),
-                        b.withOpacity(fillOpacity),
-                      ],
-                    ),
-                    border: Border.all(
-                      color: Colors.white.withOpacity(ringOpacity),
-                      width: ringWidth,
-                    ),
+            child: RepaintBoundary(
+              child: SizedBox(
+                width: size,
+                height: size,
+                child: ClipOval(
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      // ✅ "진짜 반투명"은 전체를 Opacity로 한번 더 먹여주는 게 제일 확실
+                      Opacity(
+                        opacity: fillOpacity,
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                              colors: [a, b],
+                            ),
+                          ),
+                          child: const SizedBox.expand(),
+                        ),
+                      ),
+                      // ✅ 링은 살짝 더 선명하게
+                      DecoratedBox(
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: Colors.white.withOpacity(ringOpacity),
+                            width: ringWidth,
+                          ),
+                        ),
+                        child: SizedBox.expand(key: key),
+                      ),
+                    ],
                   ),
                 ),
               ),
@@ -319,13 +330,13 @@ class _MapScreenState extends State<MapScreen> {
         );
       }
 
-      // ✅ Soft Violet 팔레트
+      // ✅ 예쁜 파스텔 보라
       const violetA = Color(0xFF9575CD); // Soft Violet
       const violetB = Color(0xFF7E57C2); // Deep-ish Soft Violet
 
-      // ✅ 전부 파스텔 보라로 통일 (단계만 유지)
+      // ✅ 전부 보라로 통일 (단계만 유지)
       final small = await makeIcon(a: violetA, b: violetB, fillOpacity: 0.80);
-      final mid   = await makeIcon(a: violetA, b: violetB, fillOpacity: 0.80);
+      final mid = await makeIcon(a: violetA, b: violetB, fillOpacity: 0.80);
       final large = await makeIcon(a: violetA, b: violetB, fillOpacity: 0.80);
 
       if (!mounted) return;
@@ -340,10 +351,6 @@ class _MapScreenState extends State<MapScreen> {
       debugPrint('Cluster icons build failed: $e');
     }
   }
-
-
-
-
 
   void _onMapControllerChanged() {
     if (_isMapLoaded && _controller != null) {
@@ -415,7 +422,7 @@ class _MapScreenState extends State<MapScreen> {
 
       // ✨ 새로고침 버튼 (위치를 조금 더 아래로 내림)
       floatingActionButton: Padding(
-        padding: const EdgeInsets.only(bottom: 20, right: 4), // bottom 16 -> 20 (적절한 위치)
+        padding: const EdgeInsets.only(bottom: 20, right: 4),
         child: Container(
           decoration: BoxDecoration(
             shape: BoxShape.circle,
@@ -466,7 +473,6 @@ class _MapScreenState extends State<MapScreen> {
           _searchResults = [];
         });
       },
-      // 검색 결과 또는 추천 목록 표시
       searchResults: _searchResults.isNotEmpty
           ? _searchResults
           .map(
@@ -491,8 +497,8 @@ class _MapScreenState extends State<MapScreen> {
       onResultMarkerTap: (item) => _focusTo(item.lat, item.lng),
       searchError: _searchError,
       isSearching: _isSearching,
-      showDynamicIsland: _isSearchFocused && _searchResults.isEmpty, // 포커스만 갔을 때 추천 정보 뜸
-      actions: _dynamicIslandActions, // 근처/추천 정보 연결
+      showDynamicIsland: _isSearchFocused && _searchResults.isEmpty,
+      actions: _dynamicIslandActions,
       onActionTap: _handleQuickAction,
     );
   }
@@ -505,7 +511,6 @@ class _MapScreenState extends State<MapScreen> {
     const Color textColor = Color(0xFF1A1A1A);
     const Color subTextColor = Color(0xFF8E929C);
 
-    // ✨ [디자인 유지] 예쁜 토글 스위치 (보라색 트랙 + 하얀 알)
     Widget buildTrendySwitch({
       required String title,
       required String subtitle,
@@ -546,8 +551,8 @@ class _MapScreenState extends State<MapScreen> {
               child: Switch(
                 value: value,
                 onChanged: onChanged,
-                activeColor: Colors.white, // 흰색 알
-                activeTrackColor: primaryColor, // 보라색 트랙
+                activeColor: Colors.white,
+                activeTrackColor: primaryColor,
                 inactiveThumbColor: Colors.white,
                 inactiveTrackColor: const Color(0xFFE5E7EB),
                 trackOutlineColor: WidgetStateProperty.all(Colors.transparent),
@@ -710,7 +715,6 @@ class _MapScreenState extends State<MapScreen> {
                         ],
                       ),
                       const SizedBox(height: 10),
-
                       buildTrendySwitch(
                         title: '필터 적용하기',
                         subtitle: '체크 시 설정한 조건으로만 검색합니다.',
@@ -718,7 +722,6 @@ class _MapScreenState extends State<MapScreen> {
                         onChanged: (v) => setModalState(() => enabled = v),
                       ),
                       const SizedBox(height: 20),
-
                       Expanded(
                         child: ListView(
                           controller: scrollController,
@@ -733,7 +736,8 @@ class _MapScreenState extends State<MapScreen> {
                                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                     children: [
                                       const Text('검색 반경', style: TextStyle(fontWeight: FontWeight.w700, color: textColor)),
-                                      Text('${radiusKm.toStringAsFixed(1)} km', style: const TextStyle(fontWeight: FontWeight.bold, color: primaryColor)),
+                                      Text('${radiusKm.toStringAsFixed(1)} km',
+                                          style: const TextStyle(fontWeight: FontWeight.bold, color: primaryColor)),
                                     ],
                                   ),
                                   SliderTheme(
@@ -766,7 +770,8 @@ class _MapScreenState extends State<MapScreen> {
                                   const SizedBox(height: 24),
 
                                   if (!includeEv && !includeH2 && !includeParking)
-                                    const Center(child: Text('표시 대상을 선택하면 상세 옵션이 나타납니다.', style: TextStyle(color: subTextColor))),
+                                    const Center(
+                                        child: Text('표시 대상을 선택하면 상세 옵션이 나타납니다.', style: TextStyle(color: subTextColor))),
 
                                   if (includeEv) ...[
                                     buildSectionTitle('EV 상세 옵션'),
@@ -788,7 +793,8 @@ class _MapScreenState extends State<MapScreen> {
 
                                   if (includeH2) ...[
                                     buildSectionTitle('H2 상세 옵션'),
-                                    const Text('압력 규격', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: subTextColor)),
+                                    const Text('압력 규격',
+                                        style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: subTextColor)),
                                     const SizedBox(height: 6),
                                     Wrap(
                                       spacing: 8,
@@ -799,7 +805,8 @@ class _MapScreenState extends State<MapScreen> {
                                       }).toList(),
                                     ),
                                     const SizedBox(height: 12),
-                                    const Text('충전소 유형', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: subTextColor)),
+                                    const Text('충전소 유형',
+                                        style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: subTextColor)),
                                     const SizedBox(height: 6),
                                     Wrap(
                                       spacing: 8,
@@ -842,8 +849,10 @@ class _MapScreenState extends State<MapScreen> {
                                         child: Row(
                                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                           children: [
-                                            Text('${priceRange.start.round()}원', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: subTextColor)),
-                                            Text('${priceRange.end.round()}원', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: subTextColor)),
+                                            Text('${priceRange.start.round()}원',
+                                                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: subTextColor)),
+                                            Text('${priceRange.end.round()}원',
+                                                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: subTextColor)),
                                           ],
                                         ),
                                       ),
@@ -1052,12 +1061,14 @@ class _MapScreenState extends State<MapScreen> {
     final List<_SearchCandidate> results = [];
     for (final s in _h2StationsWithCoordinates) {
       if (s.stationName.toLowerCase().contains(lower)) {
-        results.add(_SearchCandidate(name: s.stationName, isH2: true, h2: s, ev: null, lat: s.latitude!, lng: s.longitude!));
+        results.add(_SearchCandidate(
+            name: s.stationName, isH2: true, h2: s, ev: null, lat: s.latitude!, lng: s.longitude!));
       }
     }
     for (final s in _evStationsWithCoordinates) {
       if (s.stationName.toLowerCase().contains(lower)) {
-        results.add(_SearchCandidate(name: s.stationName, isH2: false, h2: null, ev: s, lat: s.latitude!, lng: s.longitude!));
+        results.add(_SearchCandidate(
+            name: s.stationName, isH2: false, h2: null, ev: s, lat: s.latitude!, lng: s.longitude!));
       }
     }
     if (results.length > 8) results.removeRange(8, results.length);
@@ -1160,6 +1171,7 @@ class _MapScreenState extends State<MapScreen> {
     if (parking && !_mapController.showParking) _mapController.toggleParking();
   }
 
+  // ✅ 검색바 포커스 시 추천 목록 갱신
   Future<void> _refreshDynamicIslandSuggestions() async {
     if (_isBuildingSuggestions || !_isSearchFocused) return;
     _isBuildingSuggestions = true;
@@ -1471,7 +1483,7 @@ class _MapScreenState extends State<MapScreen> {
     }
   }
 
-  // ✅ [아이콘 변경] 클러스터 수에 따라 아이콘만 다르게 선택
+  // ✅ 클러스터 수에 따라 아이콘만 다르게 선택
   NMarker _buildClusterMarker(LayerCluster<MapPoint> cluster, {double? currentZoom}) {
     final count = cluster.childPointCount;
 
@@ -1604,7 +1616,9 @@ class _MapScreenState extends State<MapScreen> {
                         decoration: BoxDecoration(
                           borderRadius: BorderRadius.circular(22),
                           color: Colors.white,
-                          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.12), blurRadius: 22, offset: const Offset(0, 14))],
+                          boxShadow: [
+                            BoxShadow(color: Colors.black.withOpacity(0.12), blurRadius: 22, offset: const Offset(0, 14))
+                          ],
                         ),
                         child: ClipRRect(
                           borderRadius: BorderRadius.circular(22),
@@ -1619,7 +1633,10 @@ class _MapScreenState extends State<MapScreen> {
                                     children: [
                                       Container(
                                         padding: const EdgeInsets.all(12),
-                                        decoration: BoxDecoration(color: accentColor.withOpacity(0.12), borderRadius: BorderRadius.circular(14)),
+                                        decoration: BoxDecoration(
+                                          color: accentColor.withOpacity(0.12),
+                                          borderRadius: BorderRadius.circular(14),
+                                        ),
                                         child: Icon(icon, color: accentColor, size: 26),
                                       ),
                                       const SizedBox(width: 12),
@@ -1627,7 +1644,10 @@ class _MapScreenState extends State<MapScreen> {
                                         child: Column(
                                           crossAxisAlignment: CrossAxisAlignment.start,
                                           children: [
-                                            Text(title, style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
+                                            Text(
+                                              title,
+                                              style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+                                            ),
                                             if (subtitle != null) ...[
                                               const SizedBox(height: 4),
                                               Text(subtitle, style: TextStyle(color: Colors.grey.shade700, fontWeight: FontWeight.w600)),
@@ -1692,7 +1712,7 @@ class _MapScreenState extends State<MapScreen> {
               style: FilledButton.styleFrom(backgroundColor: _h2MarkerBaseColor),
               icon: const Icon(Icons.payment),
               label: const Text('결제/예약'),
-              onPressed: _isPaying ? null : () => _startPayment(itemName: '${station.stationName} 충전', amount: 5000), // 예시 금액
+              onPressed: _isPaying ? null : () => _startPayment(itemName: '${station.stationName} 충전', amount: 5000),
             ),
           ),
         ],
