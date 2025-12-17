@@ -30,6 +30,7 @@ import '../../services/h2_station_api_service.dart';
 import '../etc/review_list.dart';
 import '../../services/parking_lot_api_service.dart';
 import '../../services/reservation_api_service.dart';
+import '../../utils/relative_time.dart';
 import '../bottom_navbar.dart'; // ✅ 공통 하단 네비게이션 바
 import '../etc/review.dart'; // ⭐ 리뷰 작성 페이지
 import '../payment/kakao_pay_webview.dart'; // 카카오페이 WebView
@@ -2886,8 +2887,8 @@ class _MapScreenState extends State<MapScreen> {
             ),
             _buildPopupInfoRow(
               icon: Icons.timer_rounded,
-              label: '최종 갱신',
-              value: station.lastModifiedAt ?? '정보 없음',
+              label: '최근 갱신',
+              value: formatKoreanRelativeTime(station.lastModifiedAt),
             ),
             _buildPopupInfoRow(
               icon: Icons.analytics_outlined,
@@ -3181,7 +3182,7 @@ class _MapScreenState extends State<MapScreen> {
             _buildPopupInfoRow(
               icon: Icons.timer_outlined,
               label: '최근 갱신',
-              value: station.statusUpdatedAt ?? '정보 없음',
+              value: formatKoreanRelativeTime(station.statusUpdatedAt),
             ),
             _buildPopupInfoRow(
               icon: Icons.place_rounded,
