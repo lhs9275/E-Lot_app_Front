@@ -272,6 +272,19 @@ class _FavoritesPageState extends State<FavoritesPage> {
               onDismissed: (_) => _deleteAt(i),
               child: _FavoriteTile(
                 item: item,
+                onTap: () {
+                  final stationId = item.id.trim();
+                  if (stationId.isEmpty) {
+                    _showStatus('즐겨찾기 ID가 비어있습니다.');
+                    return;
+                  }
+                  debugPrint('⭐ 즐겨찾기 탭: $stationId');
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => MapScreen(initialFocusStationId: stationId),
+                    ),
+                  );
+                },
                 onDelete: () => _deleteAt(i), // 휴지통 버튼도 같은 로직 사용
               ),
             );
@@ -357,69 +370,91 @@ class _EmptyState extends StatelessWidget {
 
 /// 한 줄 타일 (stationName만 표시) - 카드형 디자인 (개선됨)
 class _FavoriteTile extends StatelessWidget {
-  const _FavoriteTile({required this.item, required this.onDelete});
+  const _FavoriteTile({
+    required this.item,
+    required this.onTap,
+    required this.onDelete,
+  });
   final FavoriteItem item;
+  final VoidCallback onTap;
   final VoidCallback onDelete;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20), // 둥근 모서리
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.04), // 부드러운 그림자
-            blurRadius: 16,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          // 아이콘 (보라색 포인트)
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: const Color(0xFF5F33DF).withOpacity(0.1),
-              borderRadius: BorderRadius.circular(14),
+    const borderRadius = BorderRadius.all(Radius.circular(20));
+    return Material(
+      color: Colors.transparent,
+      child: Ink(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: borderRadius,
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.04), // 부드러운 그림자
+              blurRadius: 16,
+              offset: const Offset(0, 4),
             ),
-            child: const Icon(Icons.star_rounded, color: Color(0xFF5F33DF), size: 24),
-          ),
-          const SizedBox(width: 16),
-          // 텍스트 정보
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+          ],
+        ),
+        child: InkWell(
+          borderRadius: borderRadius,
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Row(
               children: [
-                Text(
-                  item.name,
-                  style: const TextStyle(
-                    fontSize: 17,
-                    fontWeight: FontWeight.w700,
-                    color: Color(0xFF1A1A1A),
+                // 아이콘 (보라색 포인트)
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF5F33DF).withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: const Icon(
+                    Icons.star_rounded,
+                    color: Color(0xFF5F33DF),
+                    size: 24,
                   ),
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  'ID: ${item.id}',
-                  style: const TextStyle(
-                    color: Color(0xFF8E929C),
-                    fontSize: 12,
-                    fontWeight: FontWeight.w500,
+                const SizedBox(width: 16),
+                // 텍스트 정보
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        item.name,
+                        style: const TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF1A1A1A),
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'ID: ${item.id}',
+                        style: const TextStyle(
+                          color: Color(0xFF8E929C),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
                   ),
+                ),
+                // 삭제 버튼
+                IconButton(
+                  tooltip: '삭제',
+                  icon: const Icon(
+                    Icons.delete_outline_rounded,
+                    color: Colors.redAccent,
+                  ),
+                  onPressed: onDelete,
                 ),
               ],
             ),
           ),
-          // 삭제 버튼
-          IconButton(
-            tooltip: '삭제',
-            icon: const Icon(Icons.delete_outline_rounded, color: Colors.redAccent),
-            onPressed: onDelete,
-          ),
-        ],
+        ),
       ),
     );
   }
