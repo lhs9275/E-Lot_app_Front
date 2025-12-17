@@ -542,6 +542,11 @@ class _MapScreenState extends State<MapScreen> {
               ),
               onMapReady: _handleMapReady,
               onMapLoaded: _handleMapLoaded,
+              onMapTapped: (_, __) {
+                if (_searchFocusNode.hasFocus) {
+                  _searchFocusNode.unfocus();
+                }
+              },
               onCameraChange: _handleCameraChange,
               onCameraIdle: _handleCameraIdle,
             ),
