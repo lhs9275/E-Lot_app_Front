@@ -3,6 +3,7 @@ import 'dart:async';
 import 'dart:convert'; // ⭐ 즐겨찾기 동기화용 JSON 파싱
 import 'dart:io' show HandshakeException, Platform, SocketException;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_naver_map/flutter_naver_map.dart';
@@ -12,7 +13,6 @@ import 'package:kakao_flutter_sdk_user/kakao_flutter_sdk_user.dart';
 import 'package:supercluster/supercluster.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:video_player/video_player.dart';
-import 'package:uni_links/uni_links.dart';
 import 'map_controller.dart';
 import 'map_point.dart';
 import 'marker_builders.dart';
@@ -36,6 +36,8 @@ import '../etc/review.dart'; // ⭐ 리뷰 작성 페이지
 import '../payment/kakao_pay_webview.dart'; // 카카오페이 WebView
 import 'package:psp2_fn/auth/token_storage.dart'; // 🔑 JWT 저장소
 import 'package:psp2_fn/auth/auth_api.dart' as clos_auth;
+import 'package:psp2_fn/utils/deep_link_adapter.dart' as deep_link;
+import 'widgets/web_naver_map.dart';
 
 /// 🔍 검색용 후보 모델
 class _SearchCandidate {
@@ -380,6 +382,7 @@ class _MapScreenState extends State<MapScreen> {
   }
 
   Future<void> _prepareClusterIcons() async {
+    if (kIsWeb) return;
     if (_isBuildingClusterIcons) return;
     _isBuildingClusterIcons = true;
     try {
@@ -480,7 +483,7 @@ class _MapScreenState extends State<MapScreen> {
     // 초기 링크 처리
     Future<void>(() async {
       try {
-        final initial = await getInitialLink();
+        final initial = await deep_link.getInitialLinkSafe();
         if (!mounted) return;
         await _handleIncomingLink(initial);
       } catch (e) {
@@ -490,7 +493,7 @@ class _MapScreenState extends State<MapScreen> {
 
     // 실시간 링크 스트림 구독
     _linkSub?.cancel();
-    _linkSub = linkStream.listen(
+    _linkSub = deep_link.linkStreamSafe.listen(
       (link) {
         unawaited(_handleIncomingLink(link));
       },
@@ -500,6 +503,10 @@ class _MapScreenState extends State<MapScreen> {
 
 
   void _onMapControllerChanged() {
+    if (kIsWeb) {
+      if (mounted) setState(() {});
+      return;
+    }
     // 데이터/필터 변경 시 UI와 마커를 갱신한다.
     _updateLoadingState(_mapController.isLoading);
     if (_isMapLoaded && _controller != null) {
@@ -515,6 +522,24 @@ class _MapScreenState extends State<MapScreen> {
   // --- build & UI 구성 ---
   @override
   Widget build(BuildContext context) {
+    if (kIsWeb) {
+      return Scaffold(
+        backgroundColor: Colors.white,
+        appBar: AppBar(
+          title: const Text('지도'),
+          backgroundColor: Colors.white,
+          foregroundColor: Colors.black,
+        ),
+        body: WebNaverMap(
+          clientId: dotenv.env['NAVER_MAP_CLIENT_ID'] ?? '',
+          latitude: _initialTarget.latitude,
+          longitude: _initialTarget.longitude,
+          zoom: _initialCamera.zoom,
+          points: _mapController.buildPoints().toList(),
+        ),
+      );
+    }
+
     // 하단 네비게이션 바(높이 90 + 마진 20)와 기기 하단 패딩만큼 지도 UI 여백을 줘서
     // 기본 제공 버튼(현재 위치 등)이 바 뒤로 숨지 않도록 한다.
     const double navBarHeight = 60;
@@ -2428,6 +2453,7 @@ class _MapScreenState extends State<MapScreen> {
   }
 
   Future<void> _renderVisibleClusters() async {
+    if (kIsWeb) return;
     final controller = _controller;
     final index = _clusterIndex;
     if (controller == null || index == null) return;
@@ -2492,7 +2518,7 @@ class _MapScreenState extends State<MapScreen> {
       await controller.clearOverlays(type: NOverlayType.marker);
       if (overlays.isEmpty) return;
       await controller.addOverlayAll(overlays);
-      if (Platform.isIOS) {
+      if (!kIsWeb && Platform.isIOS) {
         await controller.forceRefresh();
       }
       debugPrint(

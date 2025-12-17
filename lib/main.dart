@@ -46,9 +46,13 @@ Future<void> main() async {
   configureReservationApi(baseUrl: _resolveBackendBaseUrl());
 
   debugPrint('NAVER CLIENT: ${dotenv.env['NAVER_MAP_CLIENT_ID']}');
-  // 4. 네이버 지도 SDK 초기화
-  WidgetsFlutterBinding.ensureInitialized();
-  await _initializeNaverMap();
+  // 4. 네이버 지도 SDK 초기화 (웹은 JS SDK를 사용하므로 스킵)
+  if (!kIsWeb) {
+    WidgetsFlutterBinding.ensureInitialized();
+    await _initializeNaverMap();
+  } else {
+    debugPrint('[NaverMap][Web] Flutter plugin init skipped (uses JS SDK)');
+  }
 
   // 5. 로드된 값으로 KakaoSdk 초기화
   if (missingKakaoKeys.isEmpty) {

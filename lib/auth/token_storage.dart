@@ -1,29 +1,23 @@
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'token_storage_interface.dart';
+import 'token_storage_fallback.dart'
+    if (dart.library.io) 'token_storage_io.dart' as impl;
 
+/// 토큰 저장/조회/삭제를 플랫폼별 구현에 위임한다.
 class TokenStorage {
-  static final _storage = FlutterSecureStorage();
-
-  static const _keyAccessToken = 'clos21_access_token';
-  static const _keyRefreshToken = 'clos21_refresh_token';
+  static final TokenStorageImpl _delegate = impl.createTokenStorage();
 
   static Future<void> saveTokens({
     required String accessToken,
     required String refreshToken,
-  }) async {
-    await _storage.write(key: _keyAccessToken, value: accessToken);
-    await _storage.write(key: _keyRefreshToken, value: refreshToken);
-  }
+  }) =>
+      _delegate.saveTokens(
+        accessToken: accessToken,
+        refreshToken: refreshToken,
+      );
 
-  static Future<String?> getAccessToken() async {
-    return _storage.read(key: _keyAccessToken);
-  }
+  static Future<String?> getAccessToken() => _delegate.getAccessToken();
 
-  static Future<String?> getRefreshToken() async {
-    return _storage.read(key: _keyRefreshToken);
-  }
+  static Future<String?> getRefreshToken() => _delegate.getRefreshToken();
 
-  static Future<void> clear() async {
-    await _storage.delete(key: _keyAccessToken);
-    await _storage.delete(key: _keyRefreshToken);
-  }
+  static Future<void> clear() => _delegate.clear();
 }
