@@ -37,7 +37,7 @@
                 <action android:name="android.intent.action.VIEW"/>
                 <category android:name="android.intent.category.DEFAULT"/>
                 <category android:name="android.intent.category.BROWSABLE"/>
-                <data android:scheme="psp2fn" android:host="pay"/>
+                <data android:scheme="psp2fn"/>
             </intent-filter>
         </activity>
         <!-- Receive Kakao auth-code redirect in Kakao SDK activity -->
@@ -73,6 +73,11 @@
         <intent>
             <action android:name="android.intent.action.VIEW" />
             <data android:scheme="kakaokompassauth" />
+        </intent>
+        <!-- KakaoPay 결제용 스킴 -->
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="kakaotalk" />
         </intent>
         <package android:name="com.kakao.talk" />
     </queries>

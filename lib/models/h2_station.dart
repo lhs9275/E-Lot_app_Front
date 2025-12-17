@@ -5,7 +5,7 @@ class H2Station {
   final String statusName;     // 영업중 / 영업마감
   final int? waitingCount;     // 대기 차량 수 (nullable)
   final int? maxChargeCount;   // 최대 충전 가능 대수 (nullable)
-  final String? lastModifiedAt; // 최종 갱신 시간
+  final String? lastModifiedAt; // 최근 갱신 시간
   final int? price;            // 단가 (원/kg)
   final String? priceText;     // 가공된 단가 문자열이 있으면 사용
   final double? latitude;      // 위도

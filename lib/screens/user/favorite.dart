@@ -282,7 +282,7 @@ class _FavoritesPageState extends State<FavoritesPage> {
           ],
         ),
         body: body,
-        bottomNavigationBar: const MainBottomNavBar(currentIndex: 2),
+        bottomNavigationBar: const MainBottomNavBar(currentIndex: 1),
       ),
     );
   }

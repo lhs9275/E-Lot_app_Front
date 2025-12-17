@@ -12,6 +12,7 @@ import '../bottom_navbar.dart'; // ? 공통 하단 네비게이션 바
 import '../map.dart';
 import '../etc/report.dart';
 import 'settings.dart';
+import 'my_reservations.dart';
 import '../../storage/report_history_storage.dart';
 
 class MyPageScreen extends StatefulWidget {
@@ -215,7 +216,13 @@ class _MyPageScreenState extends State<MyPageScreen> {
                     child: _QuickMenuCard(
                       icon: Icons.event_note_rounded,
                       label: '내 예약',
-                      onTap: () => _showComingSoon('내 예약'),
+                      onTap: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => const MyReservationsScreen(),
+                          ),
+                        );
+                      },
                     ),
                   ),
                   const SizedBox(width: 12),
