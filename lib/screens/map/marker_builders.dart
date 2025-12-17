@@ -6,14 +6,13 @@ import '../../models/h2_station.dart';
 import '../../models/parking_lot.dart';
 
 final NOverlayImage _h2MarkerIcon =
-NOverlayImage.fromAssetImage('lib/assets/icons/markers/ev_pin.png');
+    NOverlayImage.fromAssetImage('lib/assets/icons/markers/h2_pin.png');
 final NOverlayImage _evMarkerIcon =
-NOverlayImage.fromAssetImage('lib/assets/icons/markers/h2_pin.png');
+    NOverlayImage.fromAssetImage('lib/assets/icons/markers/ev_pin.png');
 final NOverlayImage _parkingMarkerIcon =
-NOverlayImage.fromAssetImage('lib/assets/icons/markers/parking_pin.png');
+    NOverlayImage.fromAssetImage('lib/assets/icons/markers/parking_pin.png');
 
-
-NClusterableMarker buildH2Marker({
+NMarker buildH2Marker({
   required H2Station station,
   required Color tint,
   required Color Function(String status) statusColor,
@@ -21,7 +20,7 @@ NClusterableMarker buildH2Marker({
 }) {
   final lat = station.latitude!;
   final lng = station.longitude!;
-  final marker = NClusterableMarker(
+  final marker = NMarker(
     id: 'h2_marker_${station.stationId}_$lat$lng',
     position: NLatLng(lat, lng),
     caption: NOverlayCaption(
@@ -45,7 +44,7 @@ NClusterableMarker buildH2Marker({
   return marker;
 }
 
-NClusterableMarker buildEvMarker({
+NMarker buildEvMarker({
   required EVStation station,
   required Color tint,
   required Color Function(String status) statusColor,
@@ -53,7 +52,7 @@ NClusterableMarker buildEvMarker({
 }) {
   final lat = station.latitude!;
   final lng = station.longitude!;
-  final marker = NClusterableMarker(
+  final marker = NMarker(
     id: 'ev_marker_${station.stationId}_$lat$lng',
     position: NLatLng(lat, lng),
     caption: NOverlayCaption(
@@ -78,14 +77,14 @@ NClusterableMarker buildEvMarker({
   return marker;
 }
 
-NClusterableMarker buildParkingMarker({
+NMarker buildParkingMarker({
   required ParkingLot lot,
   required Color tint,
   required void Function(ParkingLot lot) onTap,
 }) {
   final lat = lot.latitude!;
   final lng = lot.longitude!;
-  final marker = NClusterableMarker(
+  final marker = NMarker(
     id: 'parking_marker_${lot.id}_$lat$lng',
     position: NLatLng(lat, lng),
     caption: NOverlayCaption(

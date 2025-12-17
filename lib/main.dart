@@ -10,6 +10,7 @@ import 'screens/etc/ranking.dart';
 import 'services/h2_station_api_service.dart';
 import 'services/ev_station_api_service.dart';
 import 'services/parking_lot_api_service.dart';
+import 'services/reservation_api_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -41,8 +42,12 @@ Future<void> main() async {
   configureEVStationApi(baseUrl: _resolveEvBaseUrl());
   // Parking API 구성 (미설정 시 EV와 동일 서버로 시도)
   configureParkingLotApi(baseUrl: _resolveParkingBaseUrl());
+  // Reservation/Payment API 구성 (미설정 시 clos21 기본값)
+  configureReservationApi(baseUrl: _resolveBackendBaseUrl());
 
+  debugPrint('NAVER CLIENT: ${dotenv.env['NAVER_MAP_CLIENT_ID']}');
   // 4. 네이버 지도 SDK 초기화
+  WidgetsFlutterBinding.ensureInitialized();
   await _initializeNaverMap();
 
   // 5. 로드된 값으로 KakaoSdk 초기화
@@ -102,6 +107,23 @@ String _resolveParkingBaseUrl() {
     return fallback;
   }
   return value;
+}
+
+String _resolveBackendBaseUrl() {
+  final explicit = dotenv.env['BACKEND_BASE_URL']?.trim();
+  if (explicit != null && explicit.isNotEmpty) return explicit;
+
+  final h2 = dotenv.env['H2_API_BASE_URL']?.trim();
+  if (h2 != null && h2.isNotEmpty) return h2;
+
+  final ev = dotenv.env['EV_API_BASE_URL']?.trim();
+  if (ev != null && ev.isNotEmpty) return ev;
+
+  const fallback = 'https://clos21.kr';
+  debugPrint(
+    '[Backend API] BACKEND_BASE_URL가 없어 기본값($fallback)을 사용합니다.',
+  );
+  return fallback;
 }
 
 void _configureHttpOverrides() {

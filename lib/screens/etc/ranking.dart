@@ -38,6 +38,17 @@ class _RankingScreenState extends State<RankingScreen> {
 
   static const String _defaultPreset = 'BALANCED';
 
+  // --- 🎨 디자인 컬러 팔레트 ---
+  final Color _bgColor = const Color(0xFFF9FBFD);
+  final Color _cardColor = Colors.white;
+
+  final Color _primaryColor = const Color(0xFF5F33DF);
+  final Color _primaryLight = const Color(0xFFF0EBFF);
+  final Color _primaryGradientEnd = const Color(0xFF7A5AF8);
+
+  final Color _textColor = const Color(0xFF1A1A1A);
+  final Color _subTextColor = const Color(0xFF8E929C);
+
   @override
   void initState() {
     super.initState();
@@ -52,6 +63,7 @@ class _RankingScreenState extends State<RankingScreen> {
     super.dispose();
   }
 
+  // --- 기능 로직 유지 ---
   Future<void> _initLocation() async {
     try {
       final serviceEnabled = await Geolocator.isLocationServiceEnabled();
@@ -149,139 +161,216 @@ class _RankingScreenState extends State<RankingScreen> {
     );
   }
 
+  // --- UI 구현 ---
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: _bgColor,
       appBar: AppBar(
-        title: const Text('추천 랭킹'),
-        backgroundColor: Colors.white,
-        foregroundColor: Colors.black,
+        title: Text(
+            '추천 랭킹', // 제목 원복 완료
+            style: TextStyle(
+              fontWeight: FontWeight.w800,
+              color: _textColor,
+              fontSize: 24,
+              letterSpacing: -0.5,
+            )
+        ),
+        backgroundColor: _bgColor,
+        foregroundColor: _textColor,
         elevation: 0,
+        centerTitle: false,
+        automaticallyImplyLeading: false,
       ),
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+          physics: const BouncingScrollPhysics(),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               _buildForm(),
-              const SizedBox(height: 16),
+              const SizedBox(height: 24),
               _buildRouteInfo(),
-              const SizedBox(height: 8),
+              const SizedBox(height: 12),
               if (_loading)
-                const Center(child: CircularProgressIndicator())
+                Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(40.0),
+                    child: CircularProgressIndicator(color: _primaryColor),
+                  ),
+                )
               else if (_error != null)
-                Center(child: Text(_error!))
+                Center(child: Text(_error!, style: TextStyle(color: _subTextColor)))
               else if (_results.isEmpty)
-                const Center(child: Text('랭킹 결과가 없습니다.'))
-              else
-                _buildResultList(),
+                  Center(
+                    child: Padding(
+                      padding: const EdgeInsets.only(top: 60.0),
+                      child: Column(
+                        children: [
+                          Icon(Icons.search_off_rounded, size: 48, color: Colors.grey.withOpacity(0.3)),
+                          const SizedBox(height: 12),
+                          Text(
+                            '조건을 설정하고\n최적의 경로를 추천받아보세요!',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(color: _subTextColor, height: 1.5),
+                          ),
+                        ],
+                      ),
+                    ),
+                  )
+                else
+                  _buildResultList(),
+
+              const SizedBox(height: 100),
             ],
           ),
         ),
       ),
-      bottomNavigationBar: const MainBottomNavBar(currentIndex: 1),
+      bottomNavigationBar: const MainBottomNavBar(currentIndex: 0),
     );
   }
 
   Widget _buildForm() {
     return Container(
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [Color(0xFFEEF2FF), Color(0xFFE0E7FF)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(16),
+        color: _cardColor,
+        borderRadius: BorderRadius.circular(32),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 12,
-            offset: const Offset(0, 6),
+            color: const Color(0xFF5F33DF).withOpacity(0.08),
+            blurRadius: 20,
+            offset: const Offset(0, 8),
+            spreadRadius: -4,
           ),
         ],
       ),
       child: Padding(
-        padding: const EdgeInsets.all(14),
+        padding: const EdgeInsets.all(24),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              '경로 기반 추천',
-              style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
-            ),
-            const SizedBox(height: 6),
-            const Text(
-              '출발지는 현재 위치로 자동 설정, 목적지는 지도 검색으로 선택하세요.',
-              style: TextStyle(color: Colors.black54, fontSize: 12),
-            ),
-            const SizedBox(height: 10),
-            _buildLocationRow(),
-            const SizedBox(height: 12),
             Row(
               children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          const Icon(Icons.radar, size: 16, color: Colors.indigo),
-                          const SizedBox(width: 6),
-                          Text('반경: ${_radiusKm.toStringAsFixed(1)} km'),
-                        ],
-                      ),
-                      Slider(
-                        activeColor: Colors.indigo,
-                        value: _radiusKm,
-                        min: 1,
-                        max: 30,
-                        divisions: 29,
-                        label: '${_radiusKm.toStringAsFixed(1)} km',
-                        onChanged: (v) => setState(() => _radiusKm = v),
-                      ),
-                    ],
+                Text(
+                  '경로 기반 추천',
+                  style: TextStyle(
+                      fontWeight: FontWeight.w800,
+                      fontSize: 20,
+                      color: _textColor
                   ),
                 ),
-                Column(
-                  children: [
-                    const Text('개수', style: TextStyle(fontWeight: FontWeight.w600)),
-                    DropdownButton<int>(
+                const Spacer(),
+                Icon(Icons.auto_awesome, color: _primaryColor, size: 20),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Text(
+              '출발/도착지를 설정하여 최적의 경로를 찾으세요.',
+              style: TextStyle(color: _subTextColor, fontSize: 13),
+            ),
+            const SizedBox(height: 24),
+
+            _buildLocationRow(),
+
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 20),
+              child: Divider(height: 1, thickness: 1, color: Color(0xFFF2F4F8)),
+            ),
+
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  '검색 반경 ${_radiusKm.toStringAsFixed(1)}km',
+                  style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 15,
+                      color: _textColor
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: _bgColor,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: DropdownButtonHideUnderline(
+                    child: DropdownButton<int>(
                       value: _limit,
+                      icon: Icon(Icons.keyboard_arrow_down_rounded, color: _subTextColor, size: 18),
+                      isDense: true,
+                      style: TextStyle(color: _textColor, fontWeight: FontWeight.bold),
                       items: const [5, 10, 15, 20]
-                          .map((v) => DropdownMenuItem(value: v, child: Text('$v')))
+                          .map((v) => DropdownMenuItem(value: v, child: Text('$v개')))
                           .toList(),
                       onChanged: (v) => setState(() => _limit = v ?? 10),
                     ),
-                  ],
+                  ),
                 ),
               ],
             ),
-            const SizedBox(height: 12),
-            Wrap(
-              spacing: 8,
-              runSpacing: 4,
+
+            SliderTheme(
+              data: SliderThemeData(
+                activeTrackColor: _primaryColor,
+                inactiveTrackColor: _primaryLight,
+                thumbColor: Colors.white,
+                trackHeight: 6,
+                thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 10, elevation: 3),
+                overlayColor: _primaryColor.withOpacity(0.1),
+              ),
+              child: Slider(
+                value: _radiusKm,
+                min: 1,
+                max: 30,
+                divisions: 29,
+                onChanged: (v) => setState(() => _radiusKm = v),
+              ),
+            ),
+
+            const SizedBox(height: 16),
+
+            Row(
               children: [
-                _buildToggleChip('EV', _includeEv, (v) => setState(() => _includeEv = v)),
-                _buildToggleChip('H2', _includeH2, (v) => setState(() => _includeH2 = v)),
-                _buildToggleChip('주차', _includeParking,
-                    (v) => setState(() => _includeParking = v)),
+                Expanded(child: _buildSoftChip('⚡ 전기차', _includeEv, (v) => setState(() => _includeEv = v))),
+                const SizedBox(width: 8),
+                Expanded(child: _buildSoftChip('💧 수소차', _includeH2, (v) => setState(() => _includeH2 = v))),
+                const SizedBox(width: 8),
+                Expanded(child: _buildSoftChip('🅿️ 주차장', _includeParking, (v) => setState(() => _includeParking = v))),
               ],
             ),
-            const SizedBox(height: 12),
-            SizedBox(
+
+            const SizedBox(height: 24),
+
+            Container(
               width: double.infinity,
+              height: 54,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [_primaryColor, _primaryGradientEnd],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(20),
+                boxShadow: [
+                  BoxShadow(
+                    color: _primaryColor.withOpacity(0.4),
+                    blurRadius: 12,
+                    offset: const Offset(0, 6),
+                  ),
+                ],
+              ),
               child: ElevatedButton(
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.indigo,
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  backgroundColor: Colors.transparent,
+                  shadowColor: Colors.transparent,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
                 ),
                 onPressed: _loading ? null : _fetchRanking,
-                child: const Text('추천 받기'),
+                child: _loading
+                    ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                    : const Text('최적 경로 추천받기', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: Colors.white)),
               ),
             ),
           ],
@@ -290,61 +379,122 @@ class _RankingScreenState extends State<RankingScreen> {
     );
   }
 
-  Widget _buildToggleChip(String label, bool selected, ValueChanged<bool> onChanged) {
-    return FilterChip(
-      label: Text(label),
-      selected: selected,
-      onSelected: (v) => onChanged(v),
-      selectedColor: Colors.indigo.shade100,
-      checkmarkColor: Colors.indigo,
-      labelStyle: TextStyle(
-        color: selected ? Colors.indigo.shade900 : Colors.black87,
-        fontWeight: FontWeight.w600,
+  // 🔥 수정됨: 테두리를 없애고(Transparent) 배경색으로만 깔끔하게 구분
+  Widget _buildSoftChip(String label, bool selected, ValueChanged<bool> onChanged) {
+    return GestureDetector(
+      onTap: () => onChanged(!selected),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          // 선택 시: 연한 보라 배경 / 선택 안됨: 흰 배경
+          color: selected ? _primaryLight : Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          // 선택 시: 테두리 투명 (깔끔함) / 선택 안됨: 연한 회색 테두리
+          border: Border.all(
+            color: selected ? Colors.transparent : const Color(0xFFE2E4E9),
+            width: 1.5,
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: selected ? _primaryColor : _subTextColor,
+            fontWeight: FontWeight.w700,
+            fontSize: 13,
+          ),
+        ),
       ),
-      shape: StadiumBorder(side: BorderSide(color: Colors.indigo.shade200)),
     );
   }
 
   Widget _buildLocationRow() {
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          children: [
-            Expanded(
-              child: ListTile(
-                contentPadding: EdgeInsets.zero,
-                title: const Text('출발 (현재 위치)'),
-                subtitle: Text(_startLat == null ? '가져오는 중...' : _startLabel),
-              ),
-            ),
-            TextButton(
-              onPressed: _initLocation,
-              child: const Text('위치 새로고침'),
-            ),
-          ],
+        _buildLocationItem(
+            icon: Icons.my_location_rounded,
+            iconColor: _primaryColor,
+            label: '출발지',
+            value: _startLat == null ? '위치 확인 중...' : _startLabel,
+            onTap: _initLocation,
+            isHighlight: true
         ),
-        const Divider(),
-        Row(
-          children: [
-            Expanded(
-              child: ListTile(
-                contentPadding: EdgeInsets.zero,
-                title: const Text('도착'),
-                subtitle: Text(
-                  _endLabel ?? '지도에서 목적지를 선택하세요',
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
+
+        Padding(
+          padding: const EdgeInsets.only(left: 20, top: 4, bottom: 4),
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: Container(
+              height: 16,
+              width: 2,
+              color: const Color(0xFFF2F4F8),
             ),
-            ElevatedButton(
-              onPressed: _pickDestination,
-              child: const Text('지도에서 선택'),
-            ),
-          ],
+          ),
+        ),
+
+        _buildLocationItem(
+          icon: Icons.flag_rounded,
+          iconColor: const Color(0xFFFF4B4B),
+          label: '도착지',
+          value: _endLabel ?? '어디로 갈까요?',
+          onTap: _pickDestination,
+          isHighlight: _endLabel != null,
+          isEmpty: _endLabel == null,
         ),
       ],
+    );
+  }
+
+  Widget _buildLocationItem({
+    required IconData icon,
+    required Color iconColor,
+    required String label,
+    required String value,
+    required VoidCallback onTap,
+    bool isHighlight = false,
+    bool isEmpty = false,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+        child: Row(
+          children: [
+            Container(
+              width: 42,
+              height: 42,
+              decoration: BoxDecoration(
+                color: iconColor.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Icon(icon, color: iconColor, size: 22),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(label, style: TextStyle(color: _subTextColor, fontSize: 11, fontWeight: FontWeight.w600)),
+                  const SizedBox(height: 2),
+                  Text(
+                    value,
+                    style: TextStyle(
+                      color: isEmpty ? _subTextColor.withOpacity(0.5) : _textColor,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 15,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+            Icon(Icons.chevron_right_rounded, color: _subTextColor.withOpacity(0.5), size: 20),
+          ],
+        ),
+      ),
     );
   }
 
@@ -353,32 +503,36 @@ class _RankingScreenState extends State<RankingScreen> {
     if (route == null) return const SizedBox.shrink();
 
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
       decoration: BoxDecoration(
-        color: Colors.indigo.shade50,
-        borderRadius: BorderRadius.circular(12),
+        color: _primaryColor.withOpacity(0.05),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: _primaryColor.withOpacity(0.1)),
       ),
       child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
-          const Icon(Icons.route, color: Colors.indigo),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text('경로 요약',
-                    style: TextStyle(fontWeight: FontWeight.w700)),
-                const SizedBox(height: 2),
-                Text(
-                  '거리: ${route.distanceKm?.toStringAsFixed(1) ?? '-'} km · '
-                  '예상: ${route.estimatedDurationMin?.toStringAsFixed(0) ?? '-'} 분',
-                  style: const TextStyle(color: Colors.black87),
-                ),
-              ],
-            ),
-          ),
+          _buildInfoItem(Icons.route_rounded, '총 거리', '${route.distanceKm?.toStringAsFixed(1) ?? '-'} km'),
+          Container(height: 30, width: 1, color: _primaryColor.withOpacity(0.1)),
+          _buildInfoItem(Icons.timer_rounded, '예상 시간', '${route.estimatedDurationMin?.toStringAsFixed(0) ?? '-'} 분'),
         ],
       ),
+    );
+  }
+
+  Widget _buildInfoItem(IconData icon, String label, String value) {
+    return Column(
+      children: [
+        Row(
+          children: [
+            Icon(icon, size: 14, color: _primaryColor),
+            const SizedBox(width: 4),
+            Text(label, style: TextStyle(color: _primaryColor.withOpacity(0.8), fontSize: 12, fontWeight: FontWeight.w600)),
+          ],
+        ),
+        const SizedBox(height: 4),
+        Text(value, style: TextStyle(color: _textColor, fontSize: 18, fontWeight: FontWeight.w800)),
+      ],
     );
   }
 
@@ -389,113 +543,103 @@ class _RankingScreenState extends State<RankingScreen> {
       physics: const NeverScrollableScrollPhysics(),
       itemBuilder: (context, index) {
         final item = _results[index];
+        final isTop = index == 0;
+
         return Container(
-          margin: const EdgeInsets.symmetric(vertical: 6),
+          margin: const EdgeInsets.symmetric(vertical: 8),
+          padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
             color: Colors.white,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: Colors.grey.shade200),
+            borderRadius: BorderRadius.circular(28),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.03),
-                blurRadius: 8,
+                color: Colors.black.withOpacity(0.04),
+                blurRadius: 16,
                 offset: const Offset(0, 4),
               ),
             ],
+            border: isTop ? Border.all(color: const Color(0xFFFFD700), width: 1.5) : null,
           ),
-          child: Padding(
-            padding: const EdgeInsets.all(12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 32,
+                height: 32,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: isTop ? const Color(0xFFFFD700) : const Color(0xFFF2F4F8),
+                  shape: BoxShape.circle,
+                ),
+                child: Text(
+                  '${item.rank}',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 14,
+                    color: isTop ? Colors.white : _subTextColor,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    CircleAvatar(
-                      radius: 18,
-                      backgroundColor: _typeColor(item.station.type),
-                      child: Text(
-                        item.rank.toString(),
-                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                    Text(
+                      item.station.name,
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 17,
+                        color: _textColor,
+                        height: 1.2,
                       ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            item.station.name,
-                            style: const TextStyle(
-                              fontWeight: FontWeight.w700,
-                              fontSize: 15,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            '${item.station.type} · 점수 ${item.score.toStringAsFixed(2)} · '
-                            '이탈 ${item.station.distanceFromRouteKm?.toStringAsFixed(2) ?? '-'} km',
-                            style: const TextStyle(color: Colors.black54, fontSize: 12),
-                          ),
-                        ],
-                      ),
+                    const SizedBox(height: 6),
+                    Text(
+                      '${item.station.type} · 이탈 ${item.station.distanceFromRouteKm?.toStringAsFixed(1) ?? '-'} km',
+                      style: TextStyle(color: _subTextColor, fontSize: 13, fontWeight: FontWeight.w500),
                     ),
-                    if (item.station.detourMinutes != null)
-                      Container(
-                        padding:
-                            const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                        decoration: BoxDecoration(
-                          color: Colors.indigo.shade50,
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Text(
-                          '우회 ${item.station.detourMinutes}분',
-                          style: const TextStyle(
-                              color: Colors.indigo, fontWeight: FontWeight.w600),
-                        ),
-                      ),
+                    const SizedBox(height: 12),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 4,
+                      children: [
+                        _buildMiniTag('⭐ 점수 ${item.score.toStringAsFixed(1)}', const Color(0xFFFFF9DB), const Color(0xFFE6B800)),
+                        if (item.station.detourMinutes != null)
+                          _buildMiniTag('⏱️ +${item.station.detourMinutes}분', const Color(0xFFFFECEC), const Color(0xFFFF6B6B)),
+                      ],
+                    )
                   ],
                 ),
-                const SizedBox(height: 8),
-                _buildScoreChips(item.scoreBreakdown),
-              ],
-            ),
+              ),
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: _primaryLight,
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Icon(Icons.star_rounded, color: _primaryColor, size: 22),
+              ),
+            ],
           ),
         );
       },
     );
   }
 
-  Widget _buildScoreChips(ScoreBreakdown sb) {
-    Widget chip(String label, double value, Color color) {
-      return Chip(
-        label: Text('$label ${value.toStringAsFixed(2)}'),
-        backgroundColor: color.withOpacity(0.1),
-        visualDensity: VisualDensity.compact,
-        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-      );
-    }
-
-    return Wrap(
-      spacing: 6,
-      runSpacing: 2,
-      children: [
-        chip('평점', sb.rating, Colors.orange),
-        chip('가격', sb.price, Colors.teal),
-      ],
+  Widget _buildMiniTag(String text, Color bg, Color txt) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Text(
+        text,
+        style: TextStyle(color: txt, fontSize: 11, fontWeight: FontWeight.w700),
+      ),
     );
-  }
-
-  Color _typeColor(String type) {
-    switch (type.toUpperCase()) {
-      case 'EV':
-        return Colors.green;
-      case 'H2':
-        return Colors.blue;
-      case 'PARKING':
-        return Colors.orange;
-      default:
-        return Colors.grey;
-    }
   }
 }

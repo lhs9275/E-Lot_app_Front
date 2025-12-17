@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../models/ev_station.dart';
 import '../../services/ev_station_api_service.dart';
+import '../../utils/relative_time.dart';
 
 class EvInfoScreen extends StatefulWidget {
   const EvInfoScreen({super.key});
@@ -59,7 +60,9 @@ class _EvInfoScreenState extends State<EvInfoScreen> {
                     children: [
                       Text('상태: ${station.statusLabel} (${station.status})'),
                       Text('출력: ${station.outputKw ?? 0} kW'),
-                      Text('최근 갱신: ${station.statusUpdatedAt ?? '정보 없음'}'),
+                      Text(
+                        '최근 갱신: ${formatKoreanRelativeTime(station.statusUpdatedAt)}',
+                      ),
                       Text(
                         '주소: ${station.address ?? ''} ${station.addressDetail ?? ''}',
                       ),

@@ -1,14 +1,13 @@
 ﻿import 'dart:async';
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter_naver_map/flutter_naver_map.dart';
-
 import '../../models/ev_station.dart';
 import '../../models/h2_station.dart';
 import '../../models/parking_lot.dart';
 import '../../services/ev_station_api_service.dart';
 import '../../services/h2_station_api_service.dart';
 import '../../services/parking_lot_api_service.dart';
+import 'map_point.dart';
 
 /// 지도 상태(데이터/필터/로딩)를 관리하는 ChangeNotifier.
 class MapController extends ChangeNotifier {
@@ -107,7 +106,9 @@ class MapController extends ChangeNotifier {
 
   Future<void> _loadParking() async {
     try {
-      final lots = await _parkingApi.fetchAll(size: 1000);
+      // 일부 서버에서 큰 페이지 사이즈(예: 1000)로 요청 시 연결이 끊어져
+      // 응답을 받지 못하는 케이스가 있어 기본 사이즈(200)로 조회한다.
+      final lots = await _parkingApi.fetchAll();
       _parkingLots = lots;
       _isLoadingParking = false;
       debugPrint('📥 Parking lots fetched: ${_parkingLots.length}');
@@ -134,17 +135,19 @@ class MapController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// 현재 필터 상태에 맞춰 클러스터 가능한 마커 목록을 반환.
-  Set<NClusterableMarker> buildMarkers({
-    required NClusterableMarker Function(H2Station) h2Builder,
-    required NClusterableMarker Function(EVStation) evBuilder,
-    required NClusterableMarker Function(ParkingLot) parkingBuilder,
-  }) {
-    final overlays = <NClusterableMarker>{};
-    if (_showH2) overlays.addAll(h2StationsWithCoords.map(h2Builder));
-    if (_showEv) overlays.addAll(evStationsWithCoords.map(evBuilder));
-    if (_showParking) overlays.addAll(parkingLotsWithCoords.map(parkingBuilder));
-    return overlays;
+  /// 현재 필터 상태에 맞춰 클러스터링에 사용할 좌표 목록을 반환.
+  List<MapPoint> buildPoints() {
+    final points = <MapPoint>[];
+    if (_showH2) {
+      points.addAll(h2StationsWithCoords.map(MapPoint.h2));
+    }
+    if (_showEv) {
+      points.addAll(evStationsWithCoords.map(MapPoint.ev));
+    }
+    if (_showParking) {
+      points.addAll(parkingLotsWithCoords.map(MapPoint.parking));
+    }
+    return points;
   }
 
   /// nearbySearch 결과를 통째로 반영할 때 사용한다.

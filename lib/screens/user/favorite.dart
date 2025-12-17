@@ -282,7 +282,7 @@ class _FavoritesPageState extends State<FavoritesPage> {
           ],
         ),
         body: body,
-        bottomNavigationBar: const MainBottomNavBar(currentIndex: 2),
+        bottomNavigationBar: const MainBottomNavBar(currentIndex: 1),
       ),
     );
   }
@@ -380,7 +380,13 @@ class _FavoriteTile extends StatelessWidget {
             onPressed: onDelete,
           ),
           onTap: () {
-            // TODO: 나중에 이 stationId로 지도 이동 / 상세 연결 가능
+            Navigator.of(context).pushReplacement(
+              MaterialPageRoute(
+                builder: (_) => MapScreen(
+                  initialFocusStationId: item.id,
+                ),
+              ),
+            );
           },
         ),
       ),

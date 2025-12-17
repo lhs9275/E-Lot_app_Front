@@ -1,6 +1,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
+    <!-- API 호출 및 결제 연동을 위한 네트워크 권한 -->
+    <uses-permission android:name="android.permission.INTERNET" />
     <!-- ✅ 위치 권한 추가 -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
@@ -29,6 +31,13 @@
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+            <!-- 앱 커스텀 스킴으로 결제 완료/취소 콜백 처리 -->
+            <intent-filter android:autoVerify="false">
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="psp2fn"/>
             </intent-filter>
         </activity>
         <!-- Receive Kakao auth-code redirect in Kakao SDK activity -->
@@ -64,6 +73,11 @@
         <intent>
             <action android:name="android.intent.action.VIEW" />
             <data android:scheme="kakaokompassauth" />
+        </intent>
+        <!-- KakaoPay 결제용 스킴 -->
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="kakaotalk" />
         </intent>
         <package android:name="com.kakao.talk" />
     </queries>
