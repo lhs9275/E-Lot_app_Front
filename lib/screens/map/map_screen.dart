@@ -1,7 +1,7 @@
 ﻿// lib/screens/map/map_screen.dart
 import 'dart:async';
 import 'dart:convert'; // ⭐ 즐겨찾기 동기화용 JSON 파싱
-import 'dart:io' show Platform;
+import 'dart:io' show HandshakeException, Platform, SocketException;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
@@ -23,6 +23,8 @@ import '../../models/ev_station.dart';
 import '../../models/h2_station.dart';
 import '../../models/parking_lot.dart';
 import '../../models/reservation.dart';
+import '../../models/directions_models.dart';
+import '../../services/directions_api_service.dart';
 import '../../services/ev_station_api_service.dart';
 import '../../services/h2_station_api_service.dart';
 import '../etc/review_list.dart';
@@ -189,6 +191,10 @@ class _MapScreenState extends State<MapScreen> {
   late final MapController _mapController = _cachedMapController ??=
       MapController(h2Api: h2StationApi, evApi: evStationApi, parkingApi: parkingLotApi);
   NaverMapController? _controller;
+  late final DirectionsApiService _directionsApi;
+  NPolylineOverlay? _routeOverlay;
+  DirectionsResult? _lastRoute;
+  bool _isFetchingRoute = false;
   final Map<int, NOverlayImage> _clusterIconsByBorderColor = {};
   bool _isBuildingClusterIcons = false;
   SuperclusterMutable<MapPoint>? _clusterIndex;
@@ -244,6 +250,8 @@ class _MapScreenState extends State<MapScreen> {
     target: _initialTarget,
     zoom: 8.5,
   );
+  static const NLatLng _fallbackDirectionsStart = NLatLng(37.5563, 126.9723);
+  static const String _fallbackDirectionsStartName = '서울역';
 
   /// ⭐ 백엔드 주소 (clos21)
   static const String _backendBaseUrl = 'https://clos21.kr';
@@ -252,6 +260,22 @@ class _MapScreenState extends State<MapScreen> {
   static const String _paymentBridgeBase = 'https://clos21.kr/pay/bridge';
   static const String _paymentApproveRedirectBase =
       'https://clos21.kr/api/payments/kakao/approve/redirect';
+
+  String _resolveDirectionsBaseUrl() {
+    final candidates = <String?>[
+      dotenv.env['BACKEND_BASE_URL'],
+      dotenv.env['EV_API_BASE_URL'],
+      dotenv.env['PARKING_API_BASE_URL'],
+      dotenv.env['H2_API_BASE_URL'],
+    ];
+
+    for (final raw in candidates) {
+      final value = raw?.trim();
+      if (value != null && value.isNotEmpty) return value;
+    }
+
+    return _backendBaseUrl;
+  }
 
   /// ⭐ 리뷰에서 사용할 기본 이미지 (충전소 개별 사진이 아직 없으므로 공통)
   static const String _defaultStationImageUrl =
@@ -324,6 +348,7 @@ class _MapScreenState extends State<MapScreen> {
   @override
   void initState() {
     super.initState();
+    _directionsApi = DirectionsApiService(baseUrl: _resolveDirectionsBaseUrl());
     _mapController.addListener(_onMapControllerChanged);
     if (_mapController.isLoading) {
       _mapController.loadAllStations();
@@ -564,33 +589,37 @@ class _MapScreenState extends State<MapScreen> {
           ],
         ),
       ),
-      floatingActionButton: Transform.translate(
-        offset: const Offset(0, 35),
-        child: Padding(
-          padding: const EdgeInsets.only(bottom: 24, right: 4),
-          child: IgnorePointer(
-            ignoring: _isSearchFocused,
-            child: AnimatedOpacity(
-              duration: const Duration(milliseconds: 160),
-              opacity: _isSearchFocused ? 0.0 : 1.0,
-              child: FloatingActionButton(
-                onPressed: _isManualRefreshing ? null : _refreshStations,
-                backgroundColor: Colors.white,
-                foregroundColor: const Color(0xFF4F46E5),
-                shape: const CircleBorder(),
-                elevation: 4,
-                child: _isManualRefreshing
-                    ? const SizedBox(
-                        width: 10,
-                        height: 10,
-                        child: CircularProgressIndicator(strokeWidth: 2.4),
-                      )
-                    : Image.asset(
-                        'lib/assets/icons/app_icon/refresh.png',
-                        width: 26,
-                        height: 26,
-                      ),
-              ),
+      floatingActionButton: Padding(
+        padding: const EdgeInsets.only(bottom: 24, right: 4),
+        child: IgnorePointer(
+          ignoring: _isSearchFocused,
+          child: AnimatedOpacity(
+            duration: const Duration(milliseconds: 160),
+            opacity: _isSearchFocused ? 0.0 : 1.0,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (_routeOverlay != null) ...[
+                  FloatingActionButton.small(
+                    heroTag: 'clearRouteFab',
+                    tooltip: '경로 지우기',
+                    onPressed: _isFetchingRoute ? null : _clearRoute,
+                    child: const Icon(Icons.close_rounded),
+                  ),
+                  const SizedBox(height: 12),
+                ],
+                FloatingActionButton(
+                  heroTag: 'refreshStationsFab',
+                  onPressed: _isManualRefreshing ? null : _refreshStations,
+                  child: _isManualRefreshing
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2.4),
+                        )
+                      : const Icon(Icons.refresh),
+                ),
+              ],
             ),
           ),
         ),
@@ -1658,6 +1687,183 @@ class _MapScreenState extends State<MapScreen> {
     );
   }
 
+  Future<void> _drawRouteTo({
+    required NLatLng goal,
+    required String goalName,
+    String option = 'trafast',
+  }) async {
+    if (_isFetchingRoute) return;
+    final controller = _controller;
+    if (controller == null) {
+      _showSnack('지도가 아직 준비되지 않았어요.');
+      return;
+    }
+
+    final position = await _getCurrentPosition();
+    if (!mounted) return;
+
+    final bool useFallbackStart = position == null ||
+        _isLikelyInvalidLatLng(position.latitude, position.longitude);
+    final double startLat =
+        useFallbackStart ? _fallbackDirectionsStart.latitude : position.latitude;
+    final double startLng = useFallbackStart
+        ? _fallbackDirectionsStart.longitude
+        : position.longitude;
+    final String startLabel =
+        useFallbackStart ? _fallbackDirectionsStartName : '현재 위치';
+
+    setState(() => _isFetchingRoute = true);
+
+    try {
+      debugPrint(
+        '[Directions] request start=($startLat,$startLng,$startLabel) goal=(${goal.latitude},${goal.longitude},$goalName) option=$option',
+      );
+      final result = await _directionsApi.fetchDirections(
+        startLat: startLat,
+        startLng: startLng,
+        goalLat: goal.latitude,
+        goalLng: goal.longitude,
+        option: option,
+      );
+
+      if (!mounted) return;
+      if (result.path.isEmpty) {
+        _showSnack('경로 결과가 비어있어요.');
+        return;
+      }
+
+      await _setRouteOverlay(result.path);
+
+      if (!mounted) return;
+      setState(() {
+        _lastRoute = result;
+      });
+
+      final bounds = NLatLngBounds.from(result.path);
+      final update = NCameraUpdate.fitBounds(
+        bounds,
+        padding: const EdgeInsets.fromLTRB(40, 160, 40, 220),
+      );
+      update.setAnimation(
+        animation: NCameraAnimation.easing,
+        duration: const Duration(milliseconds: 650),
+      );
+      await controller.updateCamera(update);
+
+      final distanceLabel = result.distanceMeters != null
+          ? _formatDistance(result.distanceMeters!.toDouble())
+          : '-';
+      final durationLabel =
+          result.duration != null ? _formatRouteDuration(result.duration!) : '-';
+      _showSnack('$startLabel → $goalName: $distanceLabel · $durationLabel');
+    } on DirectionsApiException catch (error) {
+      if (!mounted) return;
+      debugPrint('[Directions] $error');
+      final message =
+          error.statusCode == 401 ? '${error.userMessage} 로그인 후 다시 시도해주세요.' : error.userMessage;
+      _showSnack('$message (출발지: $startLabel)');
+    } on SocketException catch (error) {
+      if (!mounted) return;
+      debugPrint('[Directions] socket error: $error');
+      _showSnack('네트워크 연결을 확인해주세요.');
+    } on HandshakeException catch (error) {
+      if (!mounted) return;
+      debugPrint('[Directions] TLS handshake error: $error');
+      _showSnack('서버(HTTPS) 연결에 실패했습니다.');
+    } catch (error) {
+      if (!mounted) return;
+      debugPrint('[Directions] unknown error: $error');
+      _showSnack('경로를 불러오지 못했습니다.');
+    } finally {
+      if (!mounted) return;
+      setState(() => _isFetchingRoute = false);
+    }
+  }
+
+  bool _isLikelyInvalidLatLng(double latitude, double longitude) {
+    if (latitude.isNaN || longitude.isNaN) return true;
+    if (latitude.isInfinite || longitude.isInfinite) return true;
+    if (latitude.abs() > 90 || longitude.abs() > 180) return true;
+
+    final nearZeroLat = latitude.abs() < 0.0001;
+    final nearZeroLng = longitude.abs() < 0.0001;
+    if (nearZeroLat && nearZeroLng) return true;
+
+    // ✅ Naver Directions는 한국 좌표가 아니면 실패할 수 있어(특히 애뮬 기본 위치),
+    // 한국 범위 밖이면 서울역 출발 fallback을 사용한다.
+    const double minLat = 33.0;
+    const double maxLat = 39.9;
+    const double minLng = 124.0;
+    const double maxLng = 132.2;
+    final isInKorea =
+        latitude >= minLat && latitude <= maxLat && longitude >= minLng && longitude <= maxLng;
+    return !isInKorea;
+  }
+
+  Future<void> _setRouteOverlay(List<NLatLng> coords) async {
+    final controller = _controller;
+    if (controller == null) return;
+
+    final oldOverlay = _routeOverlay;
+    if (oldOverlay != null) {
+      try {
+        oldOverlay.setCoords(coords);
+        return;
+      } catch (_) {
+        try {
+          await controller.deleteOverlay(oldOverlay.info);
+        } catch (_) {}
+      }
+    }
+
+    final newOverlay = NPolylineOverlay(
+      id: 'route_polyline',
+      coords: coords,
+      color: const Color(0xFF3B82F6),
+      width: 6,
+      lineCap: NLineCap.round,
+      lineJoin: NLineJoin.round,
+    );
+
+    await controller.addOverlay(newOverlay);
+
+    if (!mounted) return;
+    setState(() {
+      _routeOverlay = newOverlay;
+    });
+  }
+
+  Future<void> _clearRoute() async {
+    final controller = _controller;
+    final overlay = _routeOverlay;
+
+    if (controller != null && overlay != null) {
+      try {
+        await controller.deleteOverlay(overlay.info);
+      } catch (_) {}
+    }
+
+    if (!mounted) return;
+    setState(() {
+      _routeOverlay = null;
+      _lastRoute = null;
+    });
+  }
+
+  String _formatRouteDuration(int rawDuration) {
+    if (rawDuration <= 0) return '-';
+    final bool isMillis = rawDuration >= 100000;
+    final totalSeconds = isMillis ? (rawDuration / 1000).round() : rawDuration;
+    if (totalSeconds < 60) return '1분 미만';
+
+    final hours = totalSeconds ~/ 3600;
+    final minutes = (totalSeconds % 3600) ~/ 60;
+    if (hours > 0) {
+      return minutes > 0 ? '${hours}시간 ${minutes}분' : '${hours}시간';
+    }
+    return '${minutes}분';
+  }
+
   Future<void> _tryApplyInitialFocus() async {
     if (_initialFocusResolved) return;
     final stationId = widget.initialFocusStationId?.trim();
@@ -2577,6 +2783,39 @@ class _MapScreenState extends State<MapScreen> {
     );
   }
 
+  Widget _buildDirectionsActionButton({
+    required Color accentColor,
+    required NLatLng goal,
+    required String goalName,
+  }) {
+    return SizedBox(
+      width: double.infinity,
+      child: OutlinedButton.icon(
+        style: OutlinedButton.styleFrom(
+          padding: const EdgeInsets.symmetric(vertical: 14),
+          side: BorderSide(color: accentColor.withOpacity(0.65)),
+          foregroundColor: accentColor,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+          ),
+        ),
+        icon: const Icon(Icons.alt_route_rounded),
+        label: const Text('경로 보기'),
+        onPressed: _isFetchingRoute
+            ? null
+            : () {
+                Navigator.of(context).pop();
+                unawaited(
+                  Future<void>.delayed(const Duration(milliseconds: 120), () {
+                    if (!mounted) return;
+                    unawaited(_drawRouteTo(goal: goal, goalName: goalName));
+                  }),
+                );
+              },
+      ),
+    );
+  }
+
   /// 수소 충전소 아이콘을 탭했을 때 떠 있는 카드 형태로 상세 정보를 보여준다.
   void _showH2StationPopup(H2Station station) async {
     if (!mounted) return;
@@ -2683,6 +2922,12 @@ class _MapScreenState extends State<MapScreen> {
                 ),
               ),
             ],
+            const SizedBox(height: 16),
+            _buildDirectionsActionButton(
+              accentColor: _h2MarkerBaseColor,
+              goal: NLatLng(station.latitude!, station.longitude!),
+              goalName: station.stationName,
+            ),
             const SizedBox(height: 16),
             _buildPopupActions(
               accentColor: _h2MarkerBaseColor,
@@ -2820,6 +3065,12 @@ class _MapScreenState extends State<MapScreen> {
                 ),
               ),
             ],
+            const SizedBox(height: 16),
+            _buildDirectionsActionButton(
+              accentColor: _parkingMarkerBaseColor,
+              goal: NLatLng(lot.latitude!, lot.longitude!),
+              goalName: lot.name,
+            ),
             const SizedBox(height: 16),
             _buildPopupActions(
               accentColor: _parkingMarkerBaseColor,
@@ -2963,6 +3214,12 @@ class _MapScreenState extends State<MapScreen> {
                 ),
               ),
             ],
+            const SizedBox(height: 16),
+            _buildDirectionsActionButton(
+              accentColor: _evMarkerBaseColor,
+              goal: NLatLng(station.latitude!, station.longitude!),
+              goalName: station.stationName,
+            ),
             const SizedBox(height: 16),
             _buildPopupActions(
               accentColor: _evMarkerBaseColor,
