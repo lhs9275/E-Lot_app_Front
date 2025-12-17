@@ -7,13 +7,20 @@ import 'package:http/http.dart' as http;
 import 'package:kakao_flutter_sdk_user/kakao_flutter_sdk_user.dart';
 
 import 'package:psp2_fn/auth/token_storage.dart';
-import 'favorite.dart'; // ? 즐겨찾기 페이지
-import '../bottom_navbar.dart'; // ? 공통 하단 네비게이션 바
+import 'favorite.dart';
+import '../bottom_navbar.dart';
 import '../map.dart';
 import '../etc/report.dart';
 import 'settings.dart';
 import 'my_reservations.dart';
 import '../../storage/report_history_storage.dart';
+
+// --- 🎨 공통 디자인 상수 ---
+const Color _bgColor = Color(0xFFF9FBFD);
+const Color _primaryColor = Color(0xFF5F33DF);
+const Color _cardColor = Colors.white;
+const Color _textColor = Color(0xFF1A1A1A);
+const Color _subTextColor = Color(0xFF8E929C);
 
 class MyPageScreen extends StatefulWidget {
   const MyPageScreen({super.key});
@@ -32,11 +39,9 @@ class _MyPageScreenState extends State<MyPageScreen> {
     _loadUserInfo();
   }
 
-  /// ? 로그인 유저 정보(/api/me)에서 이름 가져오기
+  /// 로그인 유저 정보 로드 (기존 로직 유지)
   Future<void> _loadUserInfo() async {
     final token = await TokenStorage.getAccessToken();
-
-    // 토큰이 없으면 비로그인 상태
     if (token == null || token.isEmpty) {
       await _loadKakaoFallback();
       return;
@@ -53,10 +58,7 @@ class _MyPageScreenState extends State<MyPageScreen> {
       if (!mounted) return;
 
       if (res.statusCode == 200) {
-        final data = jsonDecode(utf8.decode(res.bodyBytes))
-        as Map<String, dynamic>;
-
-        // 백엔드 실제 필드명에 맞게 순서 조정
+        final data = jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
         final name = (data['nickname'] ??
             data['name'] ??
             data['username'] ??
@@ -71,7 +73,6 @@ class _MyPageScreenState extends State<MyPageScreen> {
           await _loadKakaoFallback();
         }
       } else {
-        // 이름만 못 가져온 경우
         setState(() {
           _isLoggedIn = true;
           _userName = null;
@@ -88,7 +89,6 @@ class _MyPageScreenState extends State<MyPageScreen> {
     }
   }
 
-  /// 카카오 프로필 닉네임을 가져와서 표시 (서버에서 이름이 비었을 때 보조용)
   Future<void> _loadKakaoFallback() async {
     try {
       final user = await UserApi.instance.me();
@@ -114,12 +114,6 @@ class _MyPageScreenState extends State<MyPageScreen> {
     }
   }
 
-  void _showComingSoon(String title) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('$title 기능은 준비 중입니다.')),
-    );
-  }
-
   void _handleBack(BuildContext context) {
     final navigator = Navigator.of(context);
     if (navigator.canPop()) {
@@ -131,44 +125,36 @@ class _MyPageScreenState extends State<MyPageScreen> {
     }
   }
 
+  // --- 화면 빌드 ---
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final txt = Theme.of(context).textTheme;
-
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F5F7),
-
-      /// ?? 상단 뒤로가기 버튼
+      backgroundColor: _bgColor, // 배경색 변경
       appBar: AppBar(
         elevation: 0,
-        backgroundColor: const Color(0xFFF5F5F7),
+        backgroundColor: _bgColor,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
+          icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20, color: _textColor),
           onPressed: () => _handleBack(context),
-          tooltip: '뒤로',
         ),
       ),
-
       body: SafeArea(
-        top: false,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              /// 상단 프로필 영역
+              // 1. 프로필 영역
               Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  CircleAvatar(
-                    radius: 32,
-                    backgroundColor: Colors.white,
-                    child: Icon(
-                      Icons.person,
-                      size: 36,
-                      color: cs.primary,
+                  Container(
+                    width: 64,
+                    height: 64,
+                    decoration: BoxDecoration(
+                      color: _primaryColor.withOpacity(0.1),
+                      shape: BoxShape.circle,
                     ),
+                    child: Icon(Icons.person_rounded, size: 36, color: _primaryColor),
                   ),
                   const SizedBox(width: 16),
                   Expanded(
@@ -176,21 +162,17 @@ class _MyPageScreenState extends State<MyPageScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          _isLoggedIn
-                              ? (_userName ?? '로그인 사용자')
-                              : '로그인 후 이용해 주세요',
-                          style: txt.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w700,
+                          _isLoggedIn ? (_userName ?? '사용자님') : '로그인이 필요합니다',
+                          style: const TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w800,
+                            color: _textColor,
                           ),
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          _isLoggedIn
-                              ? '카카오 계정으로 로그인됨'
-                              : '카카오 로그인으로 시작하기 >',
-                          style: txt.bodySmall?.copyWith(
-                            color: cs.onSurfaceVariant,
-                          ),
+                          _isLoggedIn ? '오늘도 안전 운전하세요!' : '서비스 이용을 위해 로그인해주세요.',
+                          style: const TextStyle(fontSize: 13, color: _subTextColor),
                         ),
                       ],
                     ),
@@ -201,28 +183,23 @@ class _MyPageScreenState extends State<MyPageScreen> {
                         MaterialPageRoute(builder: (_) => const SettingsScreen()),
                       );
                     },
-                    icon: const Icon(Icons.settings_outlined),
-                    splashRadius: 22,
+                    icon: const Icon(Icons.settings_rounded, color: _subTextColor),
                   ),
                 ],
               ),
 
-              const SizedBox(height: 24),
+              const SizedBox(height: 30),
 
-              /// 상단 3개 카드: 내 예약 / 즐겨찾기 / 랭킹
+              // 2. 퀵 메뉴 (카드형)
               Row(
                 children: [
                   Expanded(
                     child: _QuickMenuCard(
                       icon: Icons.event_note_rounded,
                       label: '내 예약',
-                      onTap: () {
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => const MyReservationsScreen(),
-                          ),
-                        );
-                      },
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute(builder: (_) => const MyReservationsScreen()),
+                      ),
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -230,87 +207,62 @@ class _MyPageScreenState extends State<MyPageScreen> {
                     child: _QuickMenuCard(
                       icon: Icons.star_rounded,
                       label: '즐겨찾기',
-                      onTap: () {
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => const FavoritesPage(),
-                          ),
-                        );
-                      },
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute(builder: (_) => const FavoritesPage()),
+                      ),
                     ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
                     child: _QuickMenuCard(
                       icon: Icons.emoji_events_rounded,
-                      label: '추천, 랭킹',
-                      onTap: () {
-                        Navigator.of(context).pushNamed('/ranking');
-                      },
+                      label: '랭킹',
+                      onTap: () => Navigator.of(context).pushNamed('/ranking'),
                     ),
                   ),
                 ],
               ),
 
-              const SizedBox(height: 28),
+              const SizedBox(height: 32),
 
-              /// 섹션 1: 내 활동(리뷰)
-              Text(
+              // 3. 내 활동 섹션
+              const Text(
                 '내 활동',
-                style: txt.titleSmall?.copyWith(
-                  fontWeight: FontWeight.w600,
-                  color: cs.onSurfaceVariant,
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: _textColor),
+              ),
+              const SizedBox(height: 12),
+              _ListRow(
+                icon: Icons.rate_review_rounded,
+                iconColor: _primaryColor,
+                title: '내가 쓴 리뷰',
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const MyReviewsPage()),
                 ),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 12),
               _ListRow(
-                icon: Icons.reviews_rounded,
-                iconColor: cs.primary,
-                title: '내 리뷰',
-                onTap: () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => const MyReviewsPage(),
-                    ),
-                  );
-                },
-              ),
-
-              const SizedBox(height: 24),
-
-              /// 섹션 2: 고객센터(신고)
-              Text(
-                '고객센터',
-                style: txt.titleSmall?.copyWith(
-                  fontWeight: FontWeight.w600,
-                  color: cs.onSurfaceVariant,
+                icon: Icons.history_rounded,
+                iconColor: _primaryColor, // 통일감을 위해 색상 변경
+                title: '신고 내역',
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const MyReportsPage()),
                 ),
               ),
-              const SizedBox(height: 8),
-              _ListRow(
-                icon: Icons.report_problem_rounded,
-                iconColor: Colors.redAccent,
-                title: '신고',
-                onTap: () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => const MyReportsPage(),
-                    ),
-                  );
-                },
-              ),
+
+              const SizedBox(height: 32),
+
+              // 4. 고객센터 (필요시 추가)
+              // 여기서는 디자인 깔끔하게 마무리
             ],
           ),
         ),
       ),
-
-      /// ? 하단 네비게이션 바
       bottomNavigationBar: const MainBottomNavBar(currentIndex: 3),
     );
   }
 }
 
-/// 상단 3개 카드용 위젯
+/// 퀵 메뉴 카드 (디자인 개선)
 class _QuickMenuCard extends StatelessWidget {
   final IconData icon;
   final String label;
@@ -324,47 +276,43 @@ class _QuickMenuCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final txt = Theme.of(context).textTheme;
-
-    return Material(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(18),
-      elevation: 2,
-      shadowColor: Colors.black.withOpacity(0.05),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(18),
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 12),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 32,
-                height: 32,
-                decoration: BoxDecoration(
-                  color: cs.primary.withOpacity(0.08),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(icon, size: 20, color: cs.primary),
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(20),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 16),
+        decoration: BoxDecoration(
+          color: _cardColor,
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.04),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, size: 28, color: _primaryColor),
+            const SizedBox(height: 8),
+            Text(
+              label,
+              style: const TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: _textColor,
               ),
-              const SizedBox(height: 8),
-              Text(
-                label,
-                style: txt.bodyMedium?.copyWith(
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
   }
 }
 
-/// 리스트 형태 메뉴(내 리뷰 / 신고)
+/// 리스트 메뉴 (디자인 개선)
 class _ListRow extends StatelessWidget {
   final IconData icon;
   final Color iconColor;
@@ -380,50 +328,55 @@ class _ListRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final txt = Theme.of(context).textTheme;
-
-    return Material(
-      color: Colors.white,
+    return InkWell(
+      onTap: onTap,
       borderRadius: BorderRadius.circular(16),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(16),
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-          child: Row(
-            children: [
-              Container(
-                width: 32,
-                height: 32,
-                decoration: BoxDecoration(
-                  color: iconColor.withOpacity(0.08),
-                  borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+        decoration: BoxDecoration(
+          color: _cardColor,
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.02),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: iconColor.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(icon, size: 20, color: iconColor),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                  color: _textColor,
                 ),
-                child: Icon(icon, size: 20, color: iconColor),
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  title,
-                  style: txt.bodyMedium?.copyWith(
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-              Icon(
-                Icons.chevron_right_rounded,
-                color: cs.onSurfaceVariant,
-              ),
-            ],
-          ),
+            ),
+            const Icon(Icons.arrow_forward_ios_rounded, size: 16, color: _subTextColor),
+          ],
         ),
       ),
     );
   }
 }
 
-/// ?? 내 리뷰 1개 데이터 (충전소 이름 + 별점 + ID)
+// -----------------------------------------------------------------------------
+// [내 리뷰 페이지] MyReviewsPage (디자인 리팩토링)
+// -----------------------------------------------------------------------------
+
 class _MyReview {
   final int id;
   final String stationName;
@@ -451,7 +404,6 @@ class _MyReview {
   }
 }
 
-/// ? 내 리뷰 목록 화면 (충전소 이름 + 별점, 삭제 가능)
 class MyReviewsPage extends StatefulWidget {
   const MyReviewsPage({super.key});
 
@@ -470,6 +422,7 @@ class _MyReviewsPageState extends State<MyReviewsPage> {
     _fetchMyReviews();
   }
 
+  // --- 기능 로직 유지 ---
   Future<void> _fetchMyReviews() async {
     final token = await TokenStorage.getAccessToken();
     if (token == null || token.isEmpty) {
@@ -525,20 +478,12 @@ class _MyReviewsPageState extends State<MyReviewsPage> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('리뷰 삭제'),
-        content: Text(
-          '"${review.stationName}"에 대한 리뷰를 삭제하시겠습니까?',
-        ),
+        content: Text('"${review.stationName}" 리뷰를 삭제하시겠습니까?'),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('취소'),
-          ),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('취소')),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text(
-              '삭제',
-              style: TextStyle(color: Colors.red),
-            ),
+            child: const Text('삭제', style: TextStyle(color: Colors.red)),
           ),
         ],
       ),
@@ -550,10 +495,7 @@ class _MyReviewsPageState extends State<MyReviewsPage> {
     final uri = Uri.parse('$baseUrl/api/reviews/${review.id}');
 
     try {
-      final res = await http.delete(
-        uri,
-        headers: {'Authorization': 'Bearer $token'},
-      );
+      final res = await http.delete(uri, headers: {'Authorization': 'Bearer $token'});
 
       if (!mounted) return;
 
@@ -561,32 +503,25 @@ class _MyReviewsPageState extends State<MyReviewsPage> {
         setState(() {
           _reviews.removeWhere((r) => r.id == review.id);
         });
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('리뷰가 삭제되었습니다.')),
-        );
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('리뷰가 삭제되었습니다.')));
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('삭제 실패 (${res.statusCode})')),
-        );
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('삭제 실패 (${res.statusCode})')));
       }
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('삭제 중 오류가 발생했습니다.')),
-      );
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('삭제 중 오류가 발생했습니다.')));
     }
   }
 
   Widget _buildStarRow(int rating) {
-    final cs = Theme.of(context).colorScheme;
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: List.generate(5, (i) {
         final filled = i < rating;
         return Icon(
-          filled ? Icons.star_rounded : Icons.star_border_rounded,
+          Icons.star_rounded,
           size: 18,
-          color: filled ? cs.secondary : cs.onSurfaceVariant,
+          color: filled ? const Color(0xFFFFD700) : Colors.grey.shade200, // Amber color
         );
       }),
     );
@@ -594,94 +529,78 @@ class _MyReviewsPageState extends State<MyReviewsPage> {
 
   @override
   Widget build(BuildContext context) {
-    final txt = Theme.of(context).textTheme;
-    final cs = Theme.of(context).colorScheme;
-
     return Scaffold(
-      appBar: AppBar(title: const Text('내 리뷰')),
+      backgroundColor: _bgColor,
+      appBar: AppBar(
+        title: const Text('내가 쓴 리뷰', style: TextStyle(fontWeight: FontWeight.w700, color: _textColor)),
+        backgroundColor: _bgColor,
+        elevation: 0,
+        centerTitle: true,
+        iconTheme: const IconThemeData(color: _textColor),
+      ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const Center(child: CircularProgressIndicator(color: _primaryColor))
           : _error != null
-          ? Center(
-        child: Text(
-          _error!,
-          style: txt.bodyMedium,
-        ),
-      )
+          ? Center(child: Text(_error!, style: const TextStyle(color: _subTextColor)))
           : _reviews.isEmpty
           ? Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              Icons.reviews_rounded,
-              size: 40,
-              color: cs.primary,
-            ),
-            const SizedBox(height: 12),
-            Text(
-              '작성한 리뷰가 아직 없습니다.',
-              style: txt.bodyMedium,
-            ),
-            const SizedBox(height: 4),
-            Text(
-              '충전소/주차장 상세에서 리뷰를 남겨보세요.',
-              style: txt.bodySmall
-                  ?.copyWith(color: cs.onSurfaceVariant),
-            ),
+            Icon(Icons.rate_review_outlined, size: 48, color: _subTextColor.withOpacity(0.5)),
+            const SizedBox(height: 16),
+            const Text('작성한 리뷰가 없습니다.', style: TextStyle(color: _subTextColor)),
           ],
         ),
       )
           : ListView.separated(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+        padding: const EdgeInsets.all(20),
         itemCount: _reviews.length,
-        separatorBuilder: (_, __) => const SizedBox(height: 8),
+        separatorBuilder: (_, __) => const SizedBox(height: 16),
         itemBuilder: (context, index) {
           final review = _reviews[index];
-          return Material(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(12),
-            elevation: 1,
-            shadowColor: Colors.black.withOpacity(0.03),
-            child: ListTile(
-              leading: const Icon(Icons.ev_station_outlined),
-              title: Text(
-                review.stationName,
-                style: txt.bodyMedium?.copyWith(
-                  fontWeight: FontWeight.w600,
+          return Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: _cardColor,
+              borderRadius: BorderRadius.circular(20),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.04),
+                  blurRadius: 16,
+                  offset: const Offset(0, 4),
                 ),
-              ),
-              subtitle: _buildStarRow(review.rating),
-              trailing: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  IconButton(
-                    icon: const Icon(Icons.flag_outlined, color: Colors.orange),
-                    onPressed: () async {
-                      final result = await Navigator.of(context).push<bool>(
-                        MaterialPageRoute(
-                          builder: (_) => ReportPage(
-                            reviewId: review.id,
-                            stationName: review.stationName,
-                          ),
-                        ),
-                      );
-                      if (result == true && mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text("신고가 접수되었습니다.")),
-                        );
-                      }
-                    },
-                  ),
-                  IconButton(
-                    icon: const Icon(
-                      Icons.delete_outline,
-                      color: Colors.redAccent,
+              ],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: _primaryColor.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Icon(Icons.ev_station_rounded, color: _primaryColor, size: 20),
                     ),
-                    onPressed: () => _deleteReview(review),
-                  ),
-                ],
-              ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        review.stationName,
+                        style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16, color: _textColor),
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.delete_outline_rounded, color: Colors.redAccent, size: 22),
+                      onPressed: () => _deleteReview(review),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                _buildStarRow(review.rating),
+              ],
             ),
           );
         },
@@ -690,7 +609,10 @@ class _MyReviewsPageState extends State<MyReviewsPage> {
   }
 }
 
-/// 내가 작성한 신고 리스트 화면
+// -----------------------------------------------------------------------------
+// [내 신고 내역 페이지] MyReportsPage (디자인 리팩토링)
+// -----------------------------------------------------------------------------
+
 class MyReportsPage extends StatefulWidget {
   const MyReportsPage({super.key});
 
@@ -720,86 +642,106 @@ class _MyReportsPageState extends State<MyReportsPage> {
   String _formatTs(int timestampMs) {
     final dt = DateTime.fromMillisecondsSinceEpoch(timestampMs).toLocal();
     String two(int v) => v.toString().padLeft(2, '0');
-    return '${dt.year}-${two(dt.month)}-${two(dt.day)} ${two(dt.hour)}:${two(dt.minute)}';
+    return '${dt.year}.${two(dt.month)}.${two(dt.day)}';
   }
 
   Future<void> _deleteReport(int index) async {
     await ReportHistoryStorage.removeAt(index);
     await _loadReports();
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('신고 내역을 삭제했습니다.')),
-    );
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('삭제되었습니다.')));
   }
 
   @override
   Widget build(BuildContext context) {
-    final txt = Theme.of(context).textTheme;
-    final cs = Theme.of(context).colorScheme;
-
-    if (_loading) {
-      return Scaffold(
-        appBar: AppBar(title: const Text('신고 내역')),
-        body: const Center(child: CircularProgressIndicator()),
-      );
-    }
-
-    if (_reports.isEmpty) {
-      return Scaffold(
-        appBar: AppBar(title: const Text('신고 내역')),
-        body: Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.report_problem_rounded, size: 40, color: cs.primary),
-              const SizedBox(height: 12),
-              Text('등록된 신고 내역이 없습니다.', style: txt.bodyMedium),
-              const SizedBox(height: 4),
-              Text(
-                '불편사항이 있다면 상세 화면에서 신고를 남겨주세요.',
-                style: txt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-
     return Scaffold(
-      appBar: AppBar(title: const Text('신고 내역')),
-      body: ListView.separated(
-        padding: const EdgeInsets.all(16),
+      backgroundColor: _bgColor,
+      appBar: AppBar(
+        title: const Text('신고 내역', style: TextStyle(fontWeight: FontWeight.w700, color: _textColor)),
+        backgroundColor: _bgColor,
+        elevation: 0,
+        centerTitle: true,
+        iconTheme: const IconThemeData(color: _textColor),
+      ),
+      body: _loading
+          ? const Center(child: CircularProgressIndicator(color: _primaryColor))
+          : _reports.isEmpty
+          ? Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.report_gmailerrorred_rounded, size: 48, color: _subTextColor.withOpacity(0.5)),
+            const SizedBox(height: 16),
+            const Text('신고 내역이 없습니다.', style: TextStyle(color: _subTextColor)),
+          ],
+        ),
+      )
+          : ListView.separated(
+        padding: const EdgeInsets.all(20),
         itemCount: _reports.length,
-        separatorBuilder: (_, __) => const SizedBox(height: 8),
+        separatorBuilder: (_, __) => const SizedBox(height: 16),
         itemBuilder: (context, index) {
           final r = _reports[index];
-          final station = r.stationName.isNotEmpty ? r.stationName : '신고 대상 정보 없음';
-          final reporter = r.reporterName.isNotEmpty ? r.reporterName : '알 수 없음';
+          final station = r.stationName.isNotEmpty ? r.stationName : '정보 없음';
           final reason = r.reasonLabel.isNotEmpty ? r.reasonLabel : r.reasonCode;
           final tsText = _formatTs(r.timestampMs);
 
-          return Card(
-            child: ListTile(
-              title: Text(
-                station,
-                style: txt.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
-              ),
-              subtitle: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('신고자: $reporter'),
-                  Text('사유: $reason'),
-                  if (r.description.isNotEmpty) Text('내용: ${r.description}'),
-                  Text(
-                    '신고 시각: $tsText',
-                    style: txt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
-                  ),
-                ],
-              ),
-              trailing: IconButton(
-                icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
-                onPressed: () => _deleteReport(index),
-              ),
+          return Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: _cardColor,
+              borderRadius: BorderRadius.circular(20),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.04),
+                  blurRadius: 16,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.redAccent.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: const Text('신고 접수', style: TextStyle(fontSize: 11, color: Colors.redAccent, fontWeight: FontWeight.bold)),
+                    ),
+                    Text(tsText, style: const TextStyle(fontSize: 12, color: _subTextColor)),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            station,
+                            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16, color: _textColor),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            '사유: $reason',
+                            style: const TextStyle(fontSize: 14, color: _subTextColor),
+                          ),
+                        ],
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.delete_outline_rounded, color: _subTextColor, size: 20),
+                      onPressed: () => _deleteReport(index),
+                    ),
+                  ],
+                ),
+              ],
             ),
           );
         },

@@ -564,13 +564,21 @@ class _MapScreenState extends State<MapScreen> {
             opacity: _isSearchFocused ? 0.0 : 1.0,
             child: FloatingActionButton(
               onPressed: _isManualRefreshing ? null : _refreshStations,
+              backgroundColor: Colors.white,
+              foregroundColor: const Color(0xFF4F46E5),
+              shape: const CircleBorder(),
+              elevation: 4,
               child: _isManualRefreshing
                   ? const SizedBox(
-                      width: 20,
-                      height: 20,
+                      width: 10,
+                      height: 10,
                       child: CircularProgressIndicator(strokeWidth: 2.4),
                     )
-                  : const Icon(Icons.refresh),
+                  : Image.asset(
+                      'lib/assets/icons/app_icon/refresh.png',
+                      width: 26,
+                      height: 26,
+                      ),
             ),
           ),
         ),
