@@ -26,6 +26,13 @@ class FavoritesPage extends StatefulWidget {
 }
 
 class _FavoritesPageState extends State<FavoritesPage> {
+  // --- 🎨 디자인 컬러 상수 ---
+  final Color _bgColor = const Color(0xFFF9FBFD);
+  final Color _primaryColor = const Color(0xFF5F33DF);
+  final Color _cardColor = Colors.white;
+  final Color _textColor = const Color(0xFF1A1A1A);
+  final Color _subTextColor = const Color(0xFF8E929C);
+
   /// ✅ 백엔드 기본 주소 (MapScreen과 동일)
   static const String _backendBaseUrl = 'https://clos21.kr';
 
@@ -45,7 +52,7 @@ class _FavoritesPageState extends State<FavoritesPage> {
     _loadFavorites(); // 페이지 진입 시 즐겨찾기 목록 불러오기
   }
 
-  /// ✅ 백엔드에서 즐겨찾기 목록 불러오기
+  /// ✅ 백엔드에서 즐겨찾기 목록 불러오기 (기능 유지)
   Future<void> _loadFavorites() async {
     setState(() {
       _isLoading = true;
@@ -199,14 +206,13 @@ class _FavoritesPageState extends State<FavoritesPage> {
     super.dispose();
   }
 
+  // --- UI 구현 (디자인 리팩토링) ---
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-
     Widget body;
     if (_isLoading) {
-      body = const Center(
-        child: CircularProgressIndicator(),
+      body = Center(
+        child: CircularProgressIndicator(color: _primaryColor),
       );
     } else if (_error != null) {
       body = Center(
@@ -215,15 +221,24 @@ class _FavoritesPageState extends State<FavoritesPage> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              Icon(Icons.error_outline_rounded, size: 48, color: Colors.redAccent.withOpacity(0.6)),
+              const SizedBox(height: 12),
               Text(
                 _error!,
                 textAlign: TextAlign.center,
+                style: TextStyle(color: _subTextColor),
               ),
-              const SizedBox(height: 12),
-              FilledButton.icon(
+              const SizedBox(height: 16),
+              OutlinedButton(
                 onPressed: _loadFavorites,
-                icon: const Icon(Icons.refresh),
-                label: const Text('다시 시도'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: _primaryColor,
+                  side: BorderSide(color: _primaryColor),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                ),
+                child: const Text('다시 시도'),
               ),
             ],
           ),
@@ -234,12 +249,12 @@ class _FavoritesPageState extends State<FavoritesPage> {
     } else {
       body = RefreshIndicator(
         onRefresh: _loadFavorites,
+        color: _primaryColor,
         child: ListView.separated(
           physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.symmetric(vertical: 8),
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
           itemCount: _items.length,
-          separatorBuilder: (_, __) =>
-              Divider(height: 1, color: cs.outlineVariant),
+          separatorBuilder: (_, __) => const SizedBox(height: 12), // 구분선 대신 간격 사용
           itemBuilder: (context, i) {
             final item = _items[i];
             return Dismissible(
@@ -247,9 +262,12 @@ class _FavoritesPageState extends State<FavoritesPage> {
               direction: DismissDirection.endToStart,
               background: Container(
                 alignment: Alignment.centerRight,
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                color: Colors.red.withOpacity(.85),
-                child: const Icon(Icons.delete, color: Colors.white),
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                decoration: BoxDecoration(
+                  color: Colors.redAccent,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: const Icon(Icons.delete_outline_rounded, color: Colors.white, size: 28),
               ),
               onDismissed: (_) => _deleteAt(i),
               child: _FavoriteTile(
@@ -265,18 +283,24 @@ class _FavoritesPageState extends State<FavoritesPage> {
     return ScaffoldMessenger(
       key: _messengerKey,
       child: Scaffold(
+        backgroundColor: _bgColor,
         appBar: AppBar(
+          backgroundColor: _bgColor,
+          elevation: 0,
           leading: IconButton(
-            icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
+            icon: Icon(Icons.arrow_back_ios_new_rounded, size: 20, color: _textColor),
             onPressed: () => _handleBack(context),
             tooltip: '뒤로',
           ),
-          title: const Text('즐겨찾기'),
+          title: Text(
+            '즐겨찾기',
+            style: TextStyle(fontWeight: FontWeight.w800, color: _textColor),
+          ),
           centerTitle: true,
           actions: [
             IconButton(
               tooltip: '새로고침',
-              icon: const Icon(Icons.refresh),
+              icon: Icon(Icons.refresh_rounded, color: _textColor),
               onPressed: _loadFavorites,
             ),
           ],
@@ -288,35 +312,42 @@ class _FavoritesPageState extends State<FavoritesPage> {
   }
 }
 
-/// ✅ 빈 상태
+/// ✅ 빈 상태 (디자인 개선)
 class _EmptyState extends StatelessWidget {
   const _EmptyState();
 
   @override
   Widget build(BuildContext context) {
-    final txt = Theme.of(context).textTheme;
-    final cs = Theme.of(context).colorScheme;
-
     return Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Padding(
-            padding: const EdgeInsets.only(bottom: 6),
-            child: Text(
-              '즐겨 찾기 목록이 비었습니다',
-              style: txt.titleMedium?.copyWith(
-                fontSize: 18,
-                fontWeight: FontWeight.w700,
-                color: cs.onSurface,
-              ),
-              textAlign: TextAlign.center,
+          Container(
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: const Color(0xFF5F33DF).withOpacity(0.06), // 연한 보라색 배경
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(
+              Icons.star_border_rounded,
+              size: 56,
+              color: Color(0xFF5F33DF), // 보라색 아이콘
             ),
           ),
-          Icon(
-            Icons.bookmark_border_rounded,
-            size: 56,
-            color: cs.onSurfaceVariant,
+          const SizedBox(height: 20),
+          const Text(
+            '즐겨찾기 목록이 비었습니다',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w700,
+              color: Color(0xFF1A1A1A),
+            ),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            '자주 가는 충전소를 즐겨찾기에 추가해보세요!',
+            style: TextStyle(color: Color(0xFF8E929C)),
           ),
         ],
       ),
@@ -324,7 +355,7 @@ class _EmptyState extends StatelessWidget {
   }
 }
 
-/// 한 줄 타일 (stationName만 표시) - 카드형 디자인
+/// 한 줄 타일 (stationName만 표시) - 카드형 디자인 (개선됨)
 class _FavoriteTile extends StatelessWidget {
   const _FavoriteTile({required this.item, required this.onDelete});
   final FavoriteItem item;
@@ -332,63 +363,63 @@ class _FavoriteTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final txt = Theme.of(context).textTheme;
-    final cs = Theme.of(context).colorScheme;
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-      child: Container(
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(18),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.06),
-              blurRadius: 14,
-              offset: const Offset(0, 6),
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20), // 둥근 모서리
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04), // 부드러운 그림자
+            blurRadius: 16,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          // 아이콘 (보라색 포인트)
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: const Color(0xFF5F33DF).withOpacity(0.1),
+              borderRadius: BorderRadius.circular(14),
             ),
-          ],
-        ),
-        child: ListTile(
-          contentPadding:
-          const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-          leading: CircleAvatar(
-            radius: 18,
-            backgroundColor: cs.surfaceVariant,
-            child: Icon(
-              Icons.ev_station_rounded,
-              color: cs.onSurfaceVariant,
+            child: const Icon(Icons.star_rounded, color: Color(0xFF5F33DF), size: 24),
+          ),
+          const SizedBox(width: 16),
+          // 텍스트 정보
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  item.name,
+                  style: const TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF1A1A1A),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'ID: ${item.id}',
+                  style: const TextStyle(
+                    color: Color(0xFF8E929C),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
             ),
           ),
-          title: Text(
-            item.name,
-            style: txt.titleMedium?.copyWith(
-              fontSize: 17,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          subtitle: Text(
-            'ID: ${item.id}',
-            style: txt.bodySmall?.copyWith(
-              color: cs.onSurfaceVariant,
-              fontSize: 12,
-            ),
-          ),
-          trailing: IconButton(
+          // 삭제 버튼
+          IconButton(
             tooltip: '삭제',
-            icon: const Icon(Icons.delete_outline_rounded),
+            icon: const Icon(Icons.delete_outline_rounded, color: Colors.redAccent),
             onPressed: onDelete,
           ),
-          onTap: () {
-            Navigator.of(context).pushReplacement(
-              MaterialPageRoute(
-                builder: (_) => MapScreen(
-                  initialFocusStationId: item.id,
-                ),
-              ),
-            );
-          },
-        ),
+        ],
       ),
     );
   }

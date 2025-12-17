@@ -564,22 +564,33 @@ class _MapScreenState extends State<MapScreen> {
           ],
         ),
       ),
-      floatingActionButton: Padding(
-        padding: const EdgeInsets.only(bottom: 24, right: 4),
-        child: IgnorePointer(
-          ignoring: _isSearchFocused,
-          child: AnimatedOpacity(
-            duration: const Duration(milliseconds: 160),
-            opacity: _isSearchFocused ? 0.0 : 1.0,
-            child: FloatingActionButton(
-              onPressed: _isManualRefreshing ? null : _refreshStations,
-              child: _isManualRefreshing
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2.4),
-                    )
-                  : const Icon(Icons.refresh),
+      floatingActionButton: Transform.translate(
+        offset: const Offset(0, 35),
+        child: Padding(
+          padding: const EdgeInsets.only(bottom: 24, right: 4),
+          child: IgnorePointer(
+            ignoring: _isSearchFocused,
+            child: AnimatedOpacity(
+              duration: const Duration(milliseconds: 160),
+              opacity: _isSearchFocused ? 0.0 : 1.0,
+              child: FloatingActionButton(
+                onPressed: _isManualRefreshing ? null : _refreshStations,
+                backgroundColor: Colors.white,
+                foregroundColor: const Color(0xFF4F46E5),
+                shape: const CircleBorder(),
+                elevation: 4,
+                child: _isManualRefreshing
+                    ? const SizedBox(
+                        width: 10,
+                        height: 10,
+                        child: CircularProgressIndicator(strokeWidth: 2.4),
+                      )
+                    : Image.asset(
+                        'lib/assets/icons/app_icon/refresh.png',
+                        width: 26,
+                        height: 26,
+                      ),
+              ),
             ),
           ),
         ),

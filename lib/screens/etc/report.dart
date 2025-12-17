@@ -1,3 +1,4 @@
+// lib/screens/etc/report.dart
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -23,7 +24,8 @@ class _ReportDemoApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         useMaterial3: true,
-        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF2563EB)),
+        // 기본 테마 컬러도 보라색 계열로 맞춤
+        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF5F33DF)),
       ),
       home: const ReportPage(reviewId: 1, stationName: '데모 충전소'),
     );
@@ -51,10 +53,18 @@ enum ReportReason {
 }
 
 class _ReportPageState extends State<ReportPage> {
+  // --- 상태 변수 (기능 유지) ---
   final TextEditingController _textController = TextEditingController();
   ReportReason _selected = ReportReason.spam;
   bool _submitting = false;
   String? _kakaoNick;
+
+  // --- 디자인 컬러 상수 ---
+  final Color _bgColor = const Color(0xFFF9FBFD);
+  final Color _cardColor = Colors.white;
+  final Color _primaryColor = const Color(0xFF5F33DF);
+  final Color _textColor = const Color(0xFF1A1A1A);
+  final Color _subTextColor = const Color(0xFF8E929C);
 
   @override
   void initState() {
@@ -68,6 +78,7 @@ class _ReportPageState extends State<ReportPage> {
     super.dispose();
   }
 
+  // --- 기능 로직 (100% 원본 유지) ---
   Future<void> _loadKakaoName() async {
     try {
       final user = await UserApi.instance.me();
@@ -91,9 +102,7 @@ class _ReportPageState extends State<ReportPage> {
       final token = await TokenStorage.getAccessToken();
       if (token == null || token.isEmpty) {
         if (mounted) {
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(const SnackBar(content: Text('로그인 후 신고할 수 있습니다.')));
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('로그인 후 신고할 수 있습니다.')));
         }
         setState(() => _submitting = false);
         return;
@@ -119,9 +128,7 @@ class _ReportPageState extends State<ReportPage> {
 
       if (res.statusCode == 201) {
         _textController.clear();
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('신고가 접수되었습니다.')));
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('신고가 접수되었습니다.')));
         await ReportHistoryStorage.add(
           LocalReport(
             stationName: widget.stationName ?? '알 수 없음',
@@ -140,13 +147,9 @@ class _ReportPageState extends State<ReportPage> {
           const SnackBar(content: Text('로그인 세션이 만료되었습니다. 다시 로그인해주세요.')),
         );
       } else if (res.statusCode == 400) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('신고 사유를 선택해주세요.')));
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('신고 사유를 선택해주세요.')));
       } else if (res.statusCode == 409) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('이미 신고한 리뷰입니다.')));
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('이미 신고한 리뷰입니다.')));
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('신고 처리 중 오류 (${res.statusCode})')),
@@ -154,162 +157,252 @@ class _ReportPageState extends State<ReportPage> {
       }
     } catch (_) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('신고 처리 중 오류가 발생했습니다.')));
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('신고 처리 중 오류가 발생했습니다.')));
       }
     } finally {
       if (mounted) setState(() => _submitting = false);
     }
   }
 
+  // --- 화면 UI (디자인 변경) ---
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final title = widget.stationName != null
-        ? '${widget.stationName} 리뷰 신고'
-        : '리뷰 신고';
+    final title = widget.stationName != null ? '${widget.stationName} 신고' : '리뷰 신고';
 
     return Scaffold(
+      backgroundColor: _bgColor, // 배경색 적용
       appBar: AppBar(
-        title: Text(title),
-        actions: [
-          IconButton(
-            tooltip: '닫기',
-            onPressed: () {
-              if (Navigator.of(context).canPop()) {
-                Navigator.of(context).maybePop();
-              }
-            },
-            icon: const Icon(Icons.close),
-          ),
-        ],
+        title: Text(
+          title,
+          style: TextStyle(fontWeight: FontWeight.w800, color: _textColor, fontSize: 18),
+        ),
+        backgroundColor: _bgColor,
+        elevation: 0,
+        centerTitle: true,
+        leading: IconButton(
+          icon: Icon(Icons.close_rounded, color: _textColor),
+          onPressed: () {
+            if (Navigator.of(context).canPop()) Navigator.of(context).maybePop();
+          },
+        ),
       ),
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+          padding: const EdgeInsets.fromLTRB(24, 10, 24, 24),
+          physics: const BouncingScrollPhysics(),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Card(
-                elevation: 2,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14),
+              // 1. 신고 사유 선택 (Card Style)
+              Container(
+                decoration: BoxDecoration(
+                  color: _cardColor,
+                  borderRadius: BorderRadius.circular(24),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.04),
+                      blurRadius: 16,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
                 ),
                 child: Padding(
-                  padding: const EdgeInsets.all(14),
+                  padding: const EdgeInsets.all(20),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Row(
                         children: [
                           Container(
-                            width: 36,
-                            height: 36,
+                            padding: const EdgeInsets.all(8),
                             decoration: BoxDecoration(
-                              color: cs.primary.withOpacity(0.12),
-                              borderRadius: BorderRadius.circular(10),
+                              color: Colors.redAccent.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(12),
                             ),
-                            child: Icon(
-                              Icons.report_gmailerrorred_rounded,
-                              color: cs.primary,
-                            ),
+                            child: const Icon(Icons.report_problem_rounded, color: Colors.redAccent, size: 22),
                           ),
-                          const SizedBox(width: 10),
+                          const SizedBox(width: 12),
                           Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  '신고 사유 (필수)',
-                                  style: Theme.of(context).textTheme.titleMedium
-                                      ?.copyWith(fontWeight: FontWeight.w700),
+                                  '신고 사유',
+                                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: _textColor),
                                 ),
                                 const SizedBox(height: 2),
                                 Text(
                                   '가장 적합한 사유를 선택해주세요.',
-                                  style: Theme.of(context).textTheme.bodySmall
-                                      ?.copyWith(color: cs.onSurfaceVariant),
+                                  style: TextStyle(fontSize: 12, color: _subTextColor),
                                 ),
                               ],
                             ),
                           ),
                         ],
                       ),
-                      const SizedBox(height: 10),
+                      const SizedBox(height: 16),
+                      // 라디오 버튼 디자인 커스텀
                       ...ReportReason.values.map(
-                        (reason) => RadioListTile<ReportReason>(
-                          dense: true,
-                          contentPadding: EdgeInsets.zero,
-                          visualDensity: const VisualDensity(
-                            horizontal: -4,
-                            vertical: -2,
-                          ),
-                          title: Text(reason.label),
-                          value: reason,
-                          groupValue: _selected,
-                          onChanged: (r) {
-                            if (r != null) setState(() => _selected = r);
-                          },
-                        ),
+                            (reason) => _buildRadioTile(reason),
                       ),
                     ],
                   ),
                 ),
               ),
-              const SizedBox(height: 12),
-              Card(
-                elevation: 2,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14),
+
+              const SizedBox(height: 20),
+
+              // 2. 신고 내용 입력 (Card Style)
+              Container(
+                decoration: BoxDecoration(
+                  color: _cardColor,
+                  borderRadius: BorderRadius.circular(24),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.04),
+                      blurRadius: 16,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
                 ),
                 child: Padding(
-                  padding: const EdgeInsets.all(14),
+                  padding: const EdgeInsets.all(20),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        '신고 내용 (선택)',
-                        style: Theme.of(context).textTheme.titleMedium
-                            ?.copyWith(fontWeight: FontWeight.w700),
+                        '상세 내용 (선택)',
+                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: _textColor),
                       ),
-                      const SizedBox(height: 8),
+                      const SizedBox(height: 12),
                       TextField(
                         controller: _textController,
                         maxLines: 5,
                         maxLength: 1000,
-                        decoration: const InputDecoration(
-                          hintText: '상세 사유를 적어주세요. (최대 1000자, 선택 입력)',
-                          border: OutlineInputBorder(),
+                        style: TextStyle(color: _textColor, fontSize: 14),
+                        decoration: InputDecoration(
+                          hintText: '관리자에게 전달할 상세 내용을 적어주세요.\n(허위 신고 시 제재를 받을 수 있습니다.)',
+                          hintStyle: TextStyle(color: _subTextColor.withOpacity(0.6), fontSize: 13),
+                          filled: true,
+                          fillColor: const Color(0xFFF5F6FA), // 입력창 회색 배경
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(16),
+                            borderSide: BorderSide.none,
+                          ),
+                          contentPadding: const EdgeInsets.all(16),
+                          counterStyle: TextStyle(color: _subTextColor, fontSize: 11),
                         ),
                       ),
                     ],
                   ),
                 ),
               ),
-              const SizedBox(height: 16),
-              FilledButton(
-                onPressed: _submitting ? null : _submit,
-                child: _submitting
-                    ? const SizedBox(
-                        height: 20,
-                        width: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Text('신고하기'),
+
+              const SizedBox(height: 30),
+
+              // 3. 신고하기 버튼 (Gradient)
+              Container(
+                width: double.infinity,
+                height: 56,
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFF5F33DF), Color(0xFF7A5AF8)], // 보라색 그라데이션
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFF5F33DF).withOpacity(0.3),
+                      blurRadius: 12,
+                      offset: const Offset(0, 6),
+                    ),
+                  ],
+                ),
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.transparent,
+                    shadowColor: Colors.transparent,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                  ),
+                  onPressed: _submitting ? null : _submit,
+                  child: _submitting
+                      ? const SizedBox(
+                    height: 24,
+                    width: 24,
+                    child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5),
+                  )
+                      : const Text(
+                    '신고 접수하기',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
+                  ),
+                ),
               ),
+
               if (_kakaoNick != null) ...[
-                const SizedBox(height: 8),
+                const SizedBox(height: 12),
                 Text(
                   '신고자: $_kakaoNick',
                   textAlign: TextAlign.center,
-                  style: Theme.of(
-                    context,
-                  ).textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant),
+                  style: TextStyle(color: _subTextColor, fontSize: 12),
                 ),
               ],
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  // 커스텀 라디오 타일 위젯
+  Widget _buildRadioTile(ReportReason reason) {
+    final bool isSelected = _selected == reason;
+    return GestureDetector(
+      onTap: () => setState(() => _selected = reason),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+        decoration: BoxDecoration(
+          color: isSelected ? _primaryColor.withOpacity(0.05) : Colors.transparent,
+          borderRadius: BorderRadius.circular(12),
+          border: isSelected ? Border.all(color: _primaryColor.withOpacity(0.3)) : null,
+        ),
+        child: Row(
+          children: [
+            // 라디오 버튼 원형 디자인
+            Container(
+              width: 20,
+              height: 20,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: isSelected ? _primaryColor : const Color(0xFFCFD8DC),
+                  width: 2,
+                ),
+              ),
+              child: isSelected
+                  ? Center(
+                child: Container(
+                  width: 10,
+                  height: 10,
+                  decoration: BoxDecoration(
+                    color: _primaryColor,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+              )
+                  : null,
+            ),
+            const SizedBox(width: 12),
+            Text(
+              reason.label,
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                color: isSelected ? _primaryColor : _textColor,
+              ),
+            ),
+          ],
         ),
       ),
     );
